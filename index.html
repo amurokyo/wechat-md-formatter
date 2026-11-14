@@ -2733,6 +2733,32 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
   .history-meta { flex: 1; min-width: 0; }
   .history-meta b { display: block; color: var(--cyan-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .history-meta time { color: var(--txt-dim); font-size: 11px; }
+  .palette-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px; margin-top: 4px;
+  }
+  .palette-card {
+    position: relative; padding: 12px; text-align: left; cursor: pointer;
+    background: rgba(13, 24, 42, .86); border: 1px solid var(--line);
+    border-radius: 12px; color: var(--txt); transition: all .18s;
+  }
+  .palette-card:hover {
+    border-color: var(--line-strong); transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .24);
+  }
+  .palette-card.on {
+    border-color: var(--cyan); background: rgba(34, 211, 238, .10);
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, .16), 0 8px 22px rgba(0, 0, 0, .22);
+  }
+  .palette-bar { height: 6px; border-radius: 999px; margin-bottom: 10px; }
+  .palette-name { display: block; color: var(--cyan-soft); font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .palette-desc { display: block; color: #91a8bc; font-size: 12px; line-height: 1.5; }
+  .palette-check {
+    position: absolute; right: 10px; top: 10px; width: 22px; height: 22px;
+    display: grid; place-items: center; border-radius: 50%;
+    background: var(--cyan); color: #04121c; font-size: 12px; font-weight: 800;
+    box-shadow: 0 0 12px rgba(34, 211, 238, .5);
+  }
   #fallbackRich {
     overflow: auto; max-height: 42dvh; padding: 16px; margin: 12px 0;
     background: #fff; color: #333; border-radius: 8px;
@@ -2783,6 +2809,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     <option value="warm">主题 · 暖纸</option>
     <option value="mag">主题 · 杂志</option>
   </select>
+  <button class="btn" id="btnPalette" title="切换主题配色">🌈 配色</button>
   <button class="btn on" id="btnCanvas" title="应用主题画布背景">🎨 背景</button>
   <button class="btn" id="btnFmt" title="一键格式化">🧹 格式化</button>
   <button class="btn" id="btnTweak" title="字号/行距/段距微调">🔧 排版</button>
@@ -2877,6 +2904,14 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
   </div>
 </div>
 
+<div class="modal" id="paletteModal" role="dialog" aria-modal="true" aria-labelledby="paletteTitle" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><h2 id="paletteTitle">主题配色</h2><button class="btn" data-close aria-label="关闭">✕</button></div>
+    <p class="modal-note">配色会应用到当前主题的标题、强调、引用、代码和表格，并同步到预览、复制与导出。选择结果保存在本机。</p>
+    <div id="paletteGrid" class="palette-grid"></div>
+  </div>
+</div>
+
 <div class="modal" id="fallbackModal" role="dialog" aria-modal="true" aria-labelledby="fallbackTitle" hidden>
   <div class="modal-card">
     <div class="modal-head"><h2 id="fallbackTitle">手动复制</h2><button class="btn" data-close aria-label="关闭">✕</button></div>
@@ -2893,7 +2928,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
 const $ = s => document.querySelector(s);
 const editor = $('#editor'), preview = $('#preview');
 const KEY_DRAFT = 'md_draft', KEY_THEME = 'md_theme', KEY_CANVAS = 'md_canvas';
-const KEY_NAME = 'md_filename', KEY_HISTORY = 'md_history_v2';
+const KEY_NAME = 'md_filename', KEY_HISTORY = 'md_history_v2', KEY_PALETTE = 'md_palette';
 const store = {
   get(key, fallback = null) { try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch (_) { return fallback; } },
   set(key, value) {
@@ -2919,7 +2954,8 @@ const THEMES = {
     label: '科技青', accent: '#0891b2',
     canvas: 'background-color:#f8fcfe;',
     root: 'font-family:' + FONT + ';font-size:15px;line-height:1.78;color:#3a3f47;letter-spacing:.5px;text-align:justify;word-break:break-word;',
-    h1: 'font-size:20px;font-weight:700;color:#1a1d21;text-align:center;letter-spacing:1px;margin:30px 0 18px;',
+    h1: 'font-size:20px;font-weight:700;text-align:center;letter-spacing:1px;margin:30px 0 18px;',
+    h1Pill: 'display:inline-block;padding:8px 16px;border-radius:12px;background:#0891b2;color:#fff;font-weight:700;line-height:1.4;letter-spacing:1px;box-shadow:0 8px 20px rgba(8,145,178,.22);max-width:100%;box-sizing:border-box;',
     h2: 'font-size:18px;font-weight:700;color:#1a1d21;border-left:4px solid #0891b2;padding-left:11px;margin:26px 0 14px;',
     h3: 'font-size:16px;font-weight:700;color:#0891b2;margin:20px 0 10px;',
     h4: 'font-size:15px;font-weight:700;color:#1a1d21;margin:16px 0 8px;',
@@ -3156,6 +3192,38 @@ const THEMES = {
   }
 };
 
+/* ================= 主题配色方案（每个主题均可叠加切换） ================= */
+const PALETTES = {
+  default: { label: '主题默认', desc: '保留当前主题的原生配色', primary: '', secondary: '', strong: '', softBg: '', codeBg: '', codeText: '', deepText: '', border: '', highlight: '' },
+  magenta: { label: '洋红', desc: '鲜艳明亮，如玫瑰般绚烂', primary: '#ec4899', secondary: '#f472b6', strong: '#be185d', softBg: '#fdf2f8', codeBg: '#fce7f3', codeText: '#9d174d', deepText: '#831843', border: '#f9a8d4', highlight: '#f472b6' },
+  violet: { label: '紫棠', desc: '深沉神秘，高贵典雅', primary: '#7e22ce', secondary: '#a855f7', strong: '#6b21a8', softBg: '#f5f3ff', codeBg: '#ede9fe', codeText: '#6d28d9', deepText: '#4c1d95', border: '#c4b5fd', highlight: '#a855f7' },
+  apricot: { label: '杏黄', desc: '温润典雅，如秋日暖阳', primary: '#f59e0b', secondary: '#fbbf24', strong: '#b45309', softBg: '#fffbeb', codeBg: '#fef3c7', codeText: '#92400e', deepText: '#78350f', border: '#fcd34d', highlight: '#fbbf24' },
+  green: { label: '葱绿', desc: '清新自然，生机盎然', primary: '#16a34a', secondary: '#22c55e', strong: '#15803d', softBg: '#f0fdf4', codeBg: '#dcfce7', codeText: '#166534', deepText: '#14532d', border: '#bbf7d0', highlight: '#22c55e' },
+  garnet: { label: '石榴红', desc: '热情醒目，绚烂夺目', primary: '#dc2626', secondary: '#f87171', strong: '#b91c1c', softBg: '#fef2f2', codeBg: '#fee2e2', codeText: '#991b1b', deepText: '#7f1d1d', border: '#fecaca', highlight: '#f87171' },
+  ink: { label: '煤黑', desc: '深沉稳重，典雅内敛', primary: '#111827', secondary: '#374151', strong: '#111827', softBg: '#f9fafb', codeBg: '#f3f4f6', codeText: '#1f2937', deepText: '#111827', border: '#d1d5db', highlight: '#374151' },
+  navy: { label: '绀青绀紫', desc: '神秘优雅，古朴高贵', primary: '#233876', secondary: '#4f46e5', strong: '#1e3a8a', softBg: '#eef2ff', codeBg: '#e0e7ff', codeText: '#3730a3', deepText: '#1e1b4b', border: '#c7d2fe', highlight: '#4f46e5' },
+  xuan: { label: '玄色', desc: '赤黑相间，深邃幽远', primary: '#5b2a2c', secondary: '#7f1d1d', strong: '#4a2022', softBg: '#faf5f4', codeBg: '#f3e8e8', codeText: '#5b2a2c', deepText: '#3f1d1f', border: '#e4cfcf', highlight: '#7f1d1d' }
+};
+
+const ACCENT_MAPS = {
+  tech: { global: { '#0891b2': 'primary', '#0e7490': 'codeText', '#075985': 'deepText', '#f0f9ff': 'softBg', '#eef7fa': 'codeBg', '#d3e3ec': 'border' } },
+  minimal: { keys: { a: { '#333': 'primary' }, code: { '#111': 'codeText', '#f4f4f4': 'codeBg' }, strong: { '#111': 'primary' } } },
+  classic: { global: { '#07c160': 'primary', '#06ad56': 'strong', '#067a45': 'codeText', '#f2fcf7': 'softBg', '#eef9f3': 'codeBg', '#cde8da': 'border' } },
+  neon: { global: { '#7c3aed': 'primary', '#6d28d9': 'strong', '#db2777': 'secondary', '#a78bfa': 'border', '#c4b5fd': 'border', '#f5f3ff': 'softBg', '#f3efff': 'codeBg', '#ddd6fe': 'border', '#4c1d95': 'deepText', '#312e81': 'deepText', '#5b21b6': 'deepText' } },
+  brutal: { global: { '#ff5d00': 'primary', '#ffd60a': 'highlight' } },
+  serif: { global: { '#b91c1c': 'primary', '#9a3412': 'codeText', '#d6b8b8': 'border' } },
+  blueprint: { global: { '#0369a1': 'primary', '#0284c7': 'secondary', '#0c2d48': 'deepText', '#0c4a6e': 'deepText', '#075985': 'deepText', '#e0f2fe': 'codeBg', '#f0f9ff': 'softBg', '#bae6fd': 'border', '#7dd3fc': 'border' } },
+  warm: { global: { '#1b365d': 'primary' } },
+  mag: { keys: { a: { '#111111': 'primary' }, strong: { '#111111': 'primary' }, code: { '#111111': 'codeText' } } }
+};
+
+function colorizeValue(value, palette, map) {
+  return value.replace(/#[0-9a-f]{3,8}/gi, hex => {
+    const role = map[hex.toLowerCase()];
+    return role && palette[role] ? palette[role] : hex;
+  });
+}
+
 /* ================= 代码高亮（内联 span，深/浅两套色板） ================= */
 const HL_PALETTES = {
   dark:  { comment: '#64748b', string: '#86efac', kw: '#f472b6', num: '#facc15' },
@@ -3207,6 +3275,8 @@ function formatMarkdown(md, opt) {
 /* ================= 安全渲染 / 防抖 / 状态 ================= */
 const savedTheme = store.get(KEY_THEME, 'tech');
 let currentTheme = THEMES[savedTheme] ? savedTheme : 'tech';
+const savedPalette = store.get(KEY_PALETTE, 'default');
+let currentPalette = PALETTES[savedPalette] ? savedPalette : 'default';
 let canvasOn = store.get(KEY_CANVAS, '1') !== '0';
 let renderTimer, saveTimer, previewDirty = false;
 $('#themeSel').value = currentTheme;
@@ -3228,6 +3298,26 @@ function tweakPCss() {
   return s;
 }
 function tweakPadCss(h) { return 'padding:' + (tweaks.pad || (h ? 20 : 26)) + 'px ' + (h ? 18 : 22) + 'px ' + (h ? 20 : 40) + 'px;'; }
+
+function getActiveTheme() {
+  const base = THEMES[currentTheme] || THEMES.tech;
+  const palette = PALETTES[currentPalette];
+  const spec = ACCENT_MAPS[currentTheme];
+  if (!palette || !spec || currentPalette === 'default') return base;
+  const output = { ...base };
+  if (spec.global) {
+    const map = spec.global;
+    Object.keys(output).forEach(key => {
+      if (key !== 'canvas' && typeof output[key] === 'string') output[key] = colorizeValue(output[key], palette, map);
+    });
+  }
+  if (spec.keys) {
+    Object.entries(spec.keys).forEach(([key, map]) => {
+      if (typeof output[key] === 'string') output[key] = colorizeValue(output[key], palette, map);
+    });
+  }
+  return output;
+}
 
 function cleanHTML(html) {
   if (!window.DOMPurify) throw new Error('安全组件未加载');
@@ -3262,7 +3352,7 @@ function render() {
     return;
   }
   try {
-    const t = THEMES[currentTheme] || THEMES.tech;
+    const t = getActiveTheme();
     preview.innerHTML = cleanHTML(marked.parse(editor.value));
     const map = { P: t.p, H1: t.h1, H2: t.h2, H3: t.h3, H4: t.h4, H5: t.h4 || t.h3, H6: t.h4 || t.h3,
       BLOCKQUOTE: t.blockquote, UL: t.ul, OL: t.ol, LI: t.li, TABLE: t.table, TH: t.th, TD: t.td,
@@ -3277,6 +3367,24 @@ function render() {
       if (el.tagName === 'A') { el.target = '_blank'; el.rel = 'noopener noreferrer'; }
       if (el.tagName === 'IMG') { el.loading = 'lazy'; el.decoding = 'async'; }
     });
+    if (currentTheme === 'tech' && t.h1Pill) {
+      preview.querySelectorAll('h1').forEach(h1 => {
+        let pill = h1.querySelector(':scope > span[data-h1-pill]');
+        if (!pill) {
+          pill = document.createElement('span');
+          pill.setAttribute('data-h1-pill', '');
+          while (h1.firstChild) pill.appendChild(h1.firstChild);
+          h1.appendChild(pill);
+        }
+        h1.setAttribute('style', t.h1);
+        pill.setAttribute('style', t.h1Pill);
+        pill.querySelectorAll('strong,em,del,code,a').forEach(el => {
+          const st = el.getAttribute('style') || '';
+          el.setAttribute('style', st + 'color:inherit;');
+          if (el.tagName === 'A') el.setAttribute('style', el.getAttribute('style') + 'border-bottom-color:inherit;');
+        });
+      });
+    }
     preview.querySelectorAll('pre').forEach(pre => {
       pre.setAttribute('style', t.pre);
       const code = pre.querySelector('code');
@@ -3328,7 +3436,7 @@ function normalizeForWechat(root) {
 
 function getWechatHTML() {
   if (previewDirty) render();
-  const t = THEMES[currentTheme] || THEMES.tech;
+  const t = getActiveTheme();
   const bgHex = (canvasOn && t.canvas) ? t.canvas.replace('background-color:', '').replace(/;/g, '').trim() : '';
   const bodyClone = preview.cloneNode(true);
   bodyClone.removeAttribute('style');
@@ -3438,7 +3546,7 @@ function exportMD() {
 }
 function exportHTML() {
   if (previewDirty) render();
-  const t = THEMES[currentTheme] || THEMES.tech;
+  const t = getActiveTheme();
   const title = esc($('#fileName').textContent || 'article');
   const doc = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title></head><body style="margin:0;background:#f7f8fa;"><section style="' + t.root + 'background-color:#fff;' + (canvasOn && t.canvas ? t.canvas : '') + tweakRootCss() + 'max-width:640px;margin:0 auto;' + tweakPadCss() + '">' + cleanHTML(preview.innerHTML) + '</section></body></html>';
   downloadBlob(doc, 'text/html;charset=utf-8', safeBaseName() + '.html'); toast('⬇ 已导出安全清理后的 HTML');
@@ -3451,7 +3559,7 @@ function snapshotCurrent() {
   if (!editor.value.trim()) return;
   const list = getHistory();
   if (list[0] && list[0].content === editor.value) return;
-  list.unshift({ id: Date.now().toString(36), name: $('#fileName').textContent || '未命名.md', content: editor.value, theme: currentTheme, canvas: canvasOn, savedAt: Date.now() });
+  list.unshift({ id: Date.now().toString(36), name: $('#fileName').textContent || '未命名.md', content: editor.value, theme: currentTheme, palette: currentPalette, canvas: canvasOn, savedAt: Date.now() });
   store.set(KEY_HISTORY, JSON.stringify(list.slice(0, 8)));
   renderHistory();
 }
@@ -3469,7 +3577,7 @@ function renderHistory() {
     restore.addEventListener('click', () => {
       if (!prepareReplace()) return;
       editor.value = item.content; $('#fileName').textContent = item.name || '已恢复文稿.md';
-      currentTheme = THEMES[item.theme] ? item.theme : currentTheme; canvasOn = item.canvas !== false;
+      currentTheme = THEMES[item.theme] ? item.theme : currentTheme; currentPalette = PALETTES[item.palette] ? item.palette : 'default'; canvasOn = item.canvas !== false;
       $('#themeSel').value = currentTheme; syncCanvasBtn(); saveDraft(true); render(); closeModals(); toast('✅ 已恢复所选版本');
     });
     row.append(meta, restore); host.appendChild(row);
@@ -3618,6 +3726,30 @@ btnCanvas.addEventListener('click', () => {
   canvasOn = !canvasOn; store.set(KEY_CANVAS, canvasOn ? '1' : '0'); syncCanvasBtn(); render();
   toast(canvasOn ? '🎨 主题画布已应用' : '⬜ 已切换为纯白背景');
 });
+function renderPalette() {
+  const host = $('#paletteGrid'); host.textContent = '';
+  const baseTheme = THEMES[currentTheme] || THEMES.tech;
+  Object.entries(PALETTES).forEach(([id, palette]) => {
+    const card = document.createElement('button');
+    card.type = 'button'; card.className = 'palette-card' + (id === currentPalette ? ' on' : '');
+    card.setAttribute('aria-pressed', id === currentPalette ? 'true' : 'false');
+    card.title = '使用「' + palette.label + '」配色';
+    const bar = document.createElement('span'); bar.className = 'palette-bar';
+    const main = id === 'default' ? baseTheme.accent : palette.primary;
+    const second = id === 'default' ? (baseTheme.secondary || baseTheme.accent) : palette.secondary;
+    bar.style.background = 'linear-gradient(90deg,' + main + ',' + second + ')';
+    const name = document.createElement('b'); name.className = 'palette-name'; name.textContent = palette.label;
+    const desc = document.createElement('span'); desc.className = 'palette-desc'; desc.textContent = palette.desc;
+    card.append(bar, name, desc);
+    if (id === currentPalette) { const check = document.createElement('span'); check.className = 'palette-check'; check.textContent = '✓'; card.appendChild(check); }
+    card.addEventListener('click', () => {
+      currentPalette = id; store.set(KEY_PALETTE, id); render(); renderPalette(); closeModals();
+      toast(id === 'default' ? '🎨 已恢复主题默认配色' : '🎨 已切换为「' + palette.label + '」配色');
+    });
+    host.appendChild(card);
+  });
+}
+$('#btnPalette').addEventListener('click', () => { renderPalette(); openModal('#paletteModal'); });
 $('#btnCopy').addEventListener('click', copyWechat);
 $('#btnExport').addEventListener('click', exportHTML);
 $('#btnMd').addEventListener('click', exportMD);
@@ -3645,7 +3777,7 @@ $('#btnFmtApply').addEventListener('click', () => {
 /* ===== 排版微调 ===== */
 const TWEAK_DEFS = [['twFs', 'tvFs', 'fs', 'px'], ['twLh', 'tvLh', 'lh', ''], ['twPs', 'tvPs', 'ps', 'px'], ['twPad', 'tvPad', 'pad', 'px']];
 function themeDefaults() {
-  const t = THEMES[currentTheme] || THEMES.tech;
+  const t = getActiveTheme();
   return {
     fs: parseFloat((t.root.match(/font-size:([\d.]+)px/) || [])[1]) || 15,
     lh: parseFloat((t.root.match(/line-height:([\d.]+)/) || [])[1]) || 1.75
