@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile editing no longer copies or exports a stale preview: copy/export now force a fresh render first.
 - Bracket pairing in formatting: `你好(世界)` now formats to `你好（世界）`.
 - Images without a MIME type are no longer misread as text; corrupted images and FileReader failures are handled with clear prompts.
+- Compatibility copy no longer loses the background between lines: when the ClipboardItem path is unavailable, the old selection-based fallback let the browser strip the outer `<section>` wrappers during selection serialization, so the canvas background between blocks was lost after pasting into the WeChat editor. The fallback now writes the exact HTML via the `copy` event (`clipboardData.setData`), and manual copy from the fallback dialog does the same; the selection-based copy remains only as a last resort.
 
 ### Changed
 
