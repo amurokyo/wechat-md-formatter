@@ -1187,25 +1187,64 @@ async function copyWechat() {
     })]);
     toast('✅ 已复制，去公众号后台粘贴'); flashCopy();
   } catch (_) {
-    const holder = document.createElement('div');
-    holder.contentEditable = 'true';
-    holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
-    holder.innerHTML = html;
-    document.body.appendChild(holder);
-    const sel = getSelection(), saved = [];
-    for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
-    const range = document.createRange(); range.selectNodeContents(holder);
-    sel.removeAllRanges(); sel.addRange(range);
+    // 兼容复制：先用 copy 事件直接写原始 HTML。旧的选区复制会让浏览器在
+    // 序列化选区时剥掉外层 <section> 包裹，行间画布底色随之丢失（块上背景
+    // 还在、块间缝隙变白，即 1.2.0 反馈的“行与行之间背景没了”）；
+    // copy 事件 + clipboardData.setData 可把原始 HTML 逐字节写入剪贴板。
     let ok = false;
-    try { ok = document.execCommand('copy'); } catch (_) {}
-    sel.removeAllRanges(); saved.forEach(r => sel.addRange(r)); holder.remove();
+    try {
+      let fired = false;
+      const onCopy = e => {
+        try {
+          e.clipboardData.setData('text/html', html);
+          e.clipboardData.setData('text/plain', plain);
+          e.preventDefault();
+          fired = true;
+        } catch (_) {}
+      };
+      document.addEventListener('copy', onCopy);
+      try { ok = document.execCommand('copy') && fired; } catch (_) { ok = false; }
+      document.removeEventListener('copy', onCopy);
+    } catch (_) { ok = false; }
+    if (!ok) {
+      const holder = document.createElement('div');
+      holder.contentEditable = 'true';
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      holder.innerHTML = html;
+      document.body.appendChild(holder);
+      const sel = getSelection(), saved = [];
+      for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
+      const range = document.createRange(); range.selectNodeContents(holder);
+      sel.removeAllRanges(); sel.addRange(range);
+      try { ok = document.execCommand('copy'); } catch (_) {}
+      sel.removeAllRanges(); saved.forEach(r => sel.addRange(r)); holder.remove();
+    }
     if (ok) { toast('✅ 已复制（兼容模式）'); flashCopy(); }
     else showFallback(html);
   }
 }
+let fallbackCopyHandler = null;
 function showFallback(html) {
   $('#fallbackRich').innerHTML = cleanHTML(html);
   $('#fallbackSource').value = html;
+  // 手动从富文本框复制时，选区序列化同样会剥掉 <section> 包裹而丢行间底色；
+  // 选区落在富文本框内时，用原始 HTML 覆盖剪贴板数据。
+  if (fallbackCopyHandler) document.removeEventListener('copy', fallbackCopyHandler);
+  fallbackCopyHandler = e => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    const rich = $('#fallbackRich');
+    if (!rich || !rich.contains(node.nodeType === 1 ? node : node.parentNode)) return;
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      e.clipboardData.setData('text/html', html);
+      e.clipboardData.setData('text/plain', tmp.textContent);
+      e.preventDefault();
+    } catch (_) {}
+  };
+  document.addEventListener('copy', fallbackCopyHandler);
   openModal('#fallbackModal');
 }
 $('#btnSelectRich').addEventListener('click', () => {
@@ -1440,7 +1479,7 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200);
 }
 function openModal(id) { $(id).hidden = false; }
-function closeModals() { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); }
+function closeModals() { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); if (fallbackCopyHandler) { document.removeEventListener('copy', fallbackCopyHandler); fallbackCopyHandler = null; } }
 document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', closeModals));
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) closeModals(); }));
 /* ---- MD 快捷插入 ---- */
