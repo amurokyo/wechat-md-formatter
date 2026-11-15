@@ -1,0 +1,20 @@
+{
+  "name": "wechat-md-formatter-tests",
+  "version": "1.2.0",
+  "private": true,
+  "description": "wechat-md-formatter 自动化测试（仅测试工具依赖，不进入产品运行时）",
+  "type": "module",
+  "scripts": {
+    "test": "node unit.mjs && node smoke.mjs && node storage-compat.mjs && node preview-dirty.mjs && node storage-prompts.mjs && node security.mjs",
+    "unit": "node unit.mjs",
+    "smoke": "node smoke.mjs",
+    "storage": "node storage-compat.mjs",
+    "perf": "node perf.mjs",
+    "preview-dirty": "node preview-dirty.mjs",
+    "storage-prompts": "node storage-prompts.mjs",
+    "security": "node security.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

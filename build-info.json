@@ -1,0 +1,27 @@
+{
+  "built_at_utc": "2026-11-15T12:01:28.655735+00:00",
+  "builder": "build.py (wechat-md-formatter 1.2.0)",
+  "source": {
+    "editor.src.html": "46d1c5b6d36b8a39ef8a72b8270047ba9088393d7c9ffeccc9e44c87d01aa44d",
+    "vendor/marked.min.js": "7d735063555a0cbb11163be4b665e11e8e988b9b14a9e98d559fc1e215599704",
+    "vendor/purify.min.js": "046df62dcee9aa772245a96241826cf94d072d64f7fdace50a077f085a4e8022"
+  },
+  "vendor_versions": {
+    "marked": "12.0.2",
+    "dompurify": "3.4.17"
+  },
+  "output": {
+    "file": "index.html",
+    "bytes": 230015,
+    "sha256": "6a3d9143d8e7375e3a3bbe0d34c47f5efbb7938a0968377b8728f8b3ccbe1783"
+  },
+  "checks": {
+    "inputs_exist_nonempty": true,
+    "placeholders_exactly_once": true,
+    "placeholders_cleared": true,
+    "vendor_versions": true,
+    "html_parse": true,
+    "js_check": "node --check",
+    "smoke_test": true
+  }
+}

@@ -1,0 +1,50 @@
+# wechat-md-formatter CI（阶段 1，方案 §4.1 / §7）
+#
+# 只做校验，不发布、不改代码、不影响离线使用：
+# 产品运行时仍为零依赖单文件 index.html；这里安装的只是测试工具。
+name: CI
+
+on:
+  push:
+    branches: [upgrade/v1.2.0]
+  pull_request:
+    branches: [upgrade/v1.2.0]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      # 构建校验：只校验不写文件，并核对现有 index.html 与重建产物字节一致
+      - name: Build check (no files written)
+        run: python3 build.py --check
+
+      # 重新构建（原子替换），产物 SHA-256 打印在日志中
+      - name: Build index.html
+        run: python3 build.py
+
+      # 构建可重复性：相同输入再次构建，产物字节必须一致
+      - name: Verify reproducible build
+        run: python3 build.py --check
+
+      # 测试工具依赖（仅 CI/本地测试用，不进入产品运行时）
+      - name: Install test tooling
+        run: npm ci --prefix tests
+
+      # 离线单元测试 + 真实浏览器 smoke 测试
+      - name: Run tests
+        run: npm test --prefix tests

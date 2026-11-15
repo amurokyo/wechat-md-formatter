@@ -459,11 +459,70 @@
 </div>
 
 <script>
-/* ================= 基础 ================= */
+/* ============================================================
+   1. Config / Constants —— 配置与常量
+   DOM 引用、全部 10 个 localStorage 键、字体常量、UI 选项定义、示例文档。
+   纯常量，不含任何行为；其余服务均只读这些常量。
+   ============================================================ */
 const $ = s => document.querySelector(s);
 const editor = $('#editor'), preview = $('#preview');
+/* ---- 常用节点引用缓存（阶段 3，§4.3.3）：以下节点在页面生命周期内
+   不变，缓存后 render()/toast()/updateStats() 不再每次重复查询 DOM ---- */
+const statEl = $('#stat'), imageStatusEl = $('#imageStatus'), toastEl = $('#toast');
+const mobileMQ = matchMedia('(max-width:860px)');
 const KEY_DRAFT = 'md_draft', KEY_THEME = 'md_theme', KEY_CANVAS = 'md_canvas';
 const KEY_NAME = 'md_filename', KEY_HISTORY = 'md_history_v2', KEY_PALETTE = 'md_palette';
+const KEY_TWEAKS = 'md_tweaks';
+const KEY_FMT = 'md_fmt';
+const KEY_FOOT = 'md_footnote';
+const KEY_DARK = 'md_darkprev';
+const FONT = '-apple-system-font,BlinkMacSystemFont,Helvetica Neue,PingFang SC,Hiragino Sans GB,Microsoft YaHei UI,Microsoft YaHei,Arial,sans-serif';
+const MONO = 'Consolas,Menlo,monospace';
+const TWEAK_DEFS = [['twFs', 'tvFs', 'fs', 'px'], ['twLh', 'tvLh', 'lh', ''], ['twPs', 'tvPs', 'ps', 'px'], ['twPad', 'tvPad', 'pad', 'px']];
+const FMT_IDS = [['fmtSpace', 'space'], ['fmtClean', 'clean'], ['fmtPunct', 'punct'], ['fmtQuote', 'quote']];
+const EXAMPLE = [
+'# 示例 · 排版效果一览',
+'',
+'打开自己的 `.md` 文件，或直接在这里粘贴写作。点击右上角 **⚡复制到公众号**，到公众号后台粘贴；折叠块和任务列表会自动做兼容处理。',
+'',
+'## 这是二级标题',
+'正文支持 **加粗强调**、*斜体*、~~删除线~~ 和 [链接](https://mp.weixin.qq.com)。',
+'外部链接复制时会自动转成文末脚注（公众号不支持外链跳转）：[MD 排版台](https://github.com)。',
+'> 引用块：本工具会把主题样式内联到正文，并在复制前清理危险 HTML；复杂标签仍建议在公众号后台复核。',
+'',
+'### 列表',
+'- 无序列表项一',
+'- 无序列表项二',
+'1. 有序列表项一',
+'2. 有序列表项二',
+'',
+'### 表格',
+'| 功能 | 说明 | 状态 |',
+'| --- | --- | --- |',
+'| 一键复制 | 富文本剪贴板 | ✅ |',
+'| 本地文件 | 手机/电脑通用 | ✅ |',
+'',
+'### 代码块',
+'```js',
+'const article = {',
+'  title: "阅读原文测试",',
+'  render: () => fullStyle()  // 全量样式，一个不少',
+'};',
+'```',
+'',
+'行内代码 `inline code` 效果如上。',
+'',
+'---',
+'*由 MD 排版台生成 · 样式全内联*'
+].join('\n');
+
+/* ============================================================
+   2. StorageService —— 本地存储
+   唯一读写 localStorage 的出口：读不到返回 fallback，写失败 Toast
+   提示用户立即导出 MD 备份并返回 false，绝不抛异常中断操作。
+   另有只读的 storageStats() 体积统计（草稿/历史/图片/总量与风险等级）。
+   键名见 §1 Config，值格式见 stage0/STORAGE_KEYS.md。
+   ============================================================ */
 const store = {
   get(key, fallback = null) { try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch (_) { return fallback; } },
   set(key, value) {
@@ -471,18 +530,117 @@ const store = {
     catch (_) { toast('⚠️ 本地存储不可用或已满，请立即导出 MD 备份'); return false; }
   }
 };
-
-marked.setOptions({ breaks: true, gfm: true });
-
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200);
+/* ---- 存储体积统计（阶段 3，§4.4.6）：只读统计，不写任何 key；
+   字节数为 UTF-8 近似值（中文按 3 字节计），展示时一律标“约” ---- */
+const STORAGE_WARN_BYTES = 3 * 1024 * 1024;  // 约 3MB：接近 localStorage 配额（约 5MB），提示风险
+const STORAGE_HIGH_BYTES = 4500 * 1024;      // 约 4.5MB：接近配额上限
+const IMAGE_WARN_BYTES = 1 * 1024 * 1024;    // 本地图片 Base64 累计超 1MB 提示
+function byteLen(s) { let n = 0; for (const ch of (s || '')) n += ch.codePointAt(0) > 0x7f ? 3 : 1; return n; }
+function fmtBytes(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function storageStats() {
+  const draftText = editor ? editor.value : (store.get(KEY_DRAFT, '') || '');
+  const draftBytes = byteLen(draftText);
+  const historyBytes = byteLen(store.get(KEY_HISTORY, '') || '');
+  let settingsBytes = 0;
+  [KEY_THEME, KEY_CANVAS, KEY_NAME, KEY_PALETTE, KEY_TWEAKS, KEY_FMT, KEY_FOOT, KEY_DARK].forEach(k => { settingsBytes += byteLen(store.get(k, '') || ''); });
+  let imageBytes = 0, imageCount = 0, m;
+  const re = /!\[[^\]\n]*\]\((data:image\/[^)\s]+)\)/g;
+  while ((m = re.exec(draftText))) { imageCount++; imageBytes += byteLen(m[1]); }
+  const totalBytes = draftBytes + historyBytes + settingsBytes;
+  const risk = totalBytes >= STORAGE_HIGH_BYTES ? 'high' : totalBytes >= STORAGE_WARN_BYTES ? 'warn' : 'ok';
+  return { draftBytes, historyBytes, settingsBytes, imageBytes, imageCount, totalBytes, risk };
 }
 
-/* ================= 主题（全部内联，微信零损失） ================= */
-// 注意：所有字体名不带引号——内联样式拼进 style="..." 时双引号会截断属性
-const FONT = '-apple-system-font,BlinkMacSystemFont,Helvetica Neue,PingFang SC,Hiragino Sans GB,Microsoft YaHei UI,Microsoft YaHei,Arial,sans-serif';
-const MONO = 'Consolas,Menlo,monospace';
+/* ============================================================
+   3. MarkdownService —— Markdown 解析与安全消毒
+   marked 配置、代码高亮（内联 span，深/浅两套色板）、DOMPurify 消毒。
+   不碰 UI、不碰剪贴板；cleanHTML 是所有 HTML 入口的唯一消毒出口。
+   ============================================================ */
+marked.setOptions({ breaks: true, gfm: true });
+/* ---- 代码高亮：内联 span，深/浅两套色板 ---- */
+const HL_PALETTES = {
+  dark:  { comment: '#64748b', string: '#86efac', kw: '#f472b6', num: '#facc15' },
+  light: { comment: '#a89f8d', string: '#6f6a35', kw: '#8a5a22', num: '#1b365d' }
+};
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function highlight(code, pal) {
+  pal = pal || HL_PALETTES.dark;
+  let s = esc(code);
+  // 先按行内 token 染色（注释/字符串优先占位，避免被后续规则二次染色）
+  const stash = [];
+  const keep = h => { stash.push(h); return '\u0000' + (stash.length - 1) + '\u0000'; };
+  s = s.replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\b(const|let|var|function|return|if|else|for|while|class|new|import|from|export|async|await|try|catch|def|print|in|of|not|and|or|None|True|False|null|undefined|true|false|this)\b|(\b\d+(?:\.\d+)?\b)/g,
+    (m, com, str, kw, num) => {
+      const c = com ? pal.comment : str ? pal.string : kw ? pal.kw : pal.num;
+      return keep('<span style="color:' + c + '">' + m + '</span>');
+    });
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => stash[i]);
+}
+/* ---- 内联 style 属性 CSS 清洗（阶段 4，遗留问题 2 已修） ----
+   DOMPurify 默认不过滤 style 属性内容，`expression()` / `url(javascript:)`
+   等危险 CSS 声明会原样保留。现代浏览器不执行 expression() 与 CSS 中的
+   javascript: URL，但仍按纵深防御逐声明清除：只删含危险模式的声明，
+   保留其余合法声明（如 color、background、url(https://…)）。
+   主题样式是渲染后 setAttribute 写入的，不经过 cleanHTML，且主题样式串
+   本身不含 url(/expression(/javascript:，故不受影响；本文件全文无 url(。 */
+function cssDeclHasDanger(decl) {
+  // 检测前先解 CSS 转义（如 expr\65 ssion(、java\73cript:），只用于检测，不改写原文
+  const t = decl.replace(/\\([0-9a-f]{1,6}\s?|.)/gi, (m, c) =>
+    (/^[0-9a-f]{1,6}\s?$/i.test(c) ? String.fromCharCode(parseInt(c, 16)) : c));
+  return /(?:expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|-moz-binding|behavior\s*\()/i.test(t);
+}
+function scrubStyleAttr(value) {
+  // 按分号切分声明，但 url(...)/data:...;base64 内部分号不切（括号深度保护）。
+  // 无危险声明时返回 null，调用方原样保留属性值——避免重组改写合法样式串
+  // 的序列化形式（如末尾分号），复制/导出输出与基线逐字节一致。
+  const decls = [];
+  let cur = '', depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ';' && depth === 0) { decls.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  if (cur) decls.push(cur);
+  let dropped = false;
+  const kept = [];
+  for (const d of decls) {
+    if (d.trim() === '') continue;
+    if (cssDeclHasDanger(d)) { dropped = true; continue; }
+    kept.push(d);
+  }
+  if (!dropped) return null;
+  let out = kept.join(';');
+  if (out && /;\s*$/.test(value)) out += ';';
+  return out;
+}
+if (window.DOMPurify && DOMPurify.addHook) {
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    if (data.attrName === 'style' && typeof data.attrValue === 'string') {
+      const cleaned = scrubStyleAttr(data.attrValue);
+      if (cleaned === null) return; // 无危险声明，原样保留
+      if (!cleaned) data.keepAttr = false; else data.attrValue = cleaned;
+    }
+  });
+}
+function cleanHTML(html) {
+  if (!window.DOMPurify) throw new Error('安全组件未加载');
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'link', 'meta', 'base', 'style'],
+    ADD_ATTR: ['align']
+  });
+}
+
+/* ============================================================
+   4. ThemeService —— 主题与配色
+   9 套主题 / 8 种配色 + 主题默认配色映射、当前主题/配色/画布状态、
+   排版微调参数（null = 跟随主题默认）及主题解析。只产出样式字符串，
+   不改编辑器输入、不碰剪贴板。
+   注意：所有字体名不带引号——内联样式拼进 style="..." 时双引号会截断属性
+   ============================================================ */
+/* ---- 9 套主题（全部内联，微信零损失） ---- */
 
 const THEMES = {
   tech: {
@@ -727,7 +885,7 @@ const THEMES = {
   }
 };
 
-/* ================= 主题配色方案（每个主题均可叠加切换） ================= */
+/* ---- 主题配色方案（每个主题均可叠加切换） ---- */
 const PALETTES = {
   default: { label: '主题默认', desc: '保留当前主题的原生配色', primary: '', secondary: '', strong: '', softBg: '', codeBg: '', codeText: '', deepText: '', border: '', highlight: '' },
   magenta: { label: '洋红', desc: '鲜艳明亮，如玫瑰般绚烂', primary: '#ec4899', secondary: '#f472b6', strong: '#be185d', softBg: '#fdf2f8', codeBg: '#fce7f3', codeText: '#9d174d', deepText: '#831843', border: '#f9a8d4', highlight: '#f472b6' },
@@ -758,66 +916,13 @@ function colorizeValue(value, palette, map) {
     return role && palette[role] ? palette[role] : hex;
   });
 }
-
-/* ================= 代码高亮（内联 span，深/浅两套色板） ================= */
-const HL_PALETTES = {
-  dark:  { comment: '#64748b', string: '#86efac', kw: '#f472b6', num: '#facc15' },
-  light: { comment: '#a89f8d', string: '#6f6a35', kw: '#8a5a22', num: '#1b365d' }
-};
-function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function highlight(code, pal) {
-  pal = pal || HL_PALETTES.dark;
-  let s = esc(code);
-  // 先按行内 token 染色（注释/字符串优先占位，避免被后续规则二次染色）
-  const stash = [];
-  const keep = h => { stash.push(h); return '\u0000' + (stash.length - 1) + '\u0000'; };
-  s = s.replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\b(const|let|var|function|return|if|else|for|while|class|new|import|from|export|async|await|try|catch|def|print|in|of|not|and|or|None|True|False|null|undefined|true|false|this)\b|(\b\d+(?:\.\d+)?\b)/g,
-    (m, com, str, kw, num) => {
-      const c = com ? pal.comment : str ? pal.string : kw ? pal.kw : pal.num;
-      return keep('<span style="color:' + c + '">' + m + '</span>');
-    });
-  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => stash[i]);
-}
-
-/* ================= 一键格式化（代码块/行内代码/链接地址受保护） ================= */
-const PUNCT_MAP = { ',': '，', ';': '；', ':': '：', '!': '！', '?': '？' };
-function fmtPlain(s, o) {
-  if (!s) return s;
-  if (o.clean) {
-    s = s.replace(/[ \t]+$/gm, '');
-    s = s.replace(/\n{3,}/g, '\n\n');
-    s = s.replace(/([\u4e00-\u9fa5])[ \t]+([,.;:!?])/g, '$1$2');
-  }
-  if (o.space) {
-    s = s.replace(/([\u4e00-\u9fa5])([A-Za-z0-9])/g, '$1 $2');
-    s = s.replace(/([A-Za-z0-9])([\u4e00-\u9fa5])/g, '$1 $2');
-  }
-  if (o.punct) {
-    s = s.replace(/([\u4e00-\u9fa5])\s*[,;:!?\)]\s*/g, (m, c, p) => c + (PUNCT_MAP[p] || (p === ')' ? '）' : p)));
-    s = s.replace(/([\u4e00-\u9fa5])\.(?!\d)/g, '$1。');
-    s = s.replace(/\(([^()]*[\u4e00-\u9fa5][^()]*)\)/g, '（$1）');
-  }
-  if (o.quote) s = s.replace(/"([^"\n]*[\u4e00-\u9fa5][^"\n]*)"/g, '「$1」');
-  return s;
-}
-function formatMarkdown(md, opt) {
-  // 奇数段为受保护片段：代码块/行内代码/链接
-  const segs = md.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\))/g);
-  for (let i = 0; i < segs.length; i += 2) segs[i] = fmtPlain(segs[i], opt);
-  return segs.join('');
-}
-
-/* ================= 安全渲染 / 防抖 / 状态 ================= */
 const savedTheme = store.get(KEY_THEME, 'tech');
 let currentTheme = THEMES[savedTheme] ? savedTheme : 'tech';
 const savedPalette = store.get(KEY_PALETTE, 'default');
 let currentPalette = PALETTES[savedPalette] ? savedPalette : 'default';
 let canvasOn = store.get(KEY_CANVAS, '1') !== '0';
-let renderTimer, saveTimer, previewDirty = false;
 $('#themeSel').value = currentTheme;
-
 /* 排版微调：null = 跟随主题默认 */
-const KEY_TWEAKS = 'md_tweaks';
 let tweaks = (() => { try { return JSON.parse(store.get(KEY_TWEAKS, '')) || {}; } catch (_) { return {}; } })();
 function tweakRootCss() {
   let s = '';
@@ -833,7 +938,6 @@ function tweakPCss() {
   return s;
 }
 function tweakPadCss(h) { return 'padding:' + (tweaks.pad || (h ? 20 : 26)) + 'px ' + (h ? 18 : 22) + 'px ' + (h ? 20 : 40) + 'px;'; }
-
 function getActiveTheme() {
   const base = THEMES[currentTheme] || THEMES.tech;
   const palette = PALETTES[currentPalette];
@@ -853,57 +957,96 @@ function getActiveTheme() {
   }
   return output;
 }
-
-function cleanHTML(html) {
-  if (!window.DOMPurify) throw new Error('安全组件未加载');
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'link', 'meta', 'base'],
-    ADD_ATTR: ['align']
-  });
+function themeDefaults() {
+  const t = getActiveTheme();
+  return {
+    fs: parseFloat((t.root.match(/font-size:([\d.]+)px/) || [])[1]) || 15,
+    lh: parseFloat((t.root.match(/line-height:([\d.]+)/) || [])[1]) || 1.75
+  };
 }
 
+
+/* ============================================================
+   5. PreviewRenderer —— 预览渲染
+   全量渲染 render()（marked 解析 → cleanHTML 消毒 → 主题内联样式 →
+   代码高亮 → H1 圆角标题块）、180ms 防抖调度、字数/阅读时间与图片
+   状态统计。移动端编辑态下只置 previewDirty，切换回预览时再渲染；
+   复制/导出则强制刷新（render(true)）以保证输出最新。超大文稿只做
+   温和提示，绝不截断。只写 #preview，不碰剪贴板与存储。
+   ============================================================ */
+
+
+let renderTimer, saveTimer, previewDirty = false, largeDocWarned = false;
 function updateStats() {
   const txt = editor.value.trim();
   const cjk = (txt.match(/[\u4e00-\u9fa5]/g) || []).length;
   const words = (txt.replace(/[\u4e00-\u9fa5]/g, ' ').match(/[a-zA-Z0-9_]+/g) || []).length;
   const total = cjk + words;
   const minutes = total ? Math.max(1, Math.round(total / 400)) : 0;
-  $('#stat').textContent = total + ' 字 · 约 ' + minutes + ' 分钟';
+  statEl.textContent = total + ' 字 · 约 ' + minutes + ' 分钟';
 }
 
 function updateImageStatus() {
   const imgs = Array.from(preview.querySelectorAll('img'));
   const local = imgs.filter(img => /^(data:|blob:)/i.test(img.getAttribute('src') || '')).length;
   const external = imgs.length - local;
-  $('#imageStatus').textContent = imgs.length ? `图片 ${imgs.length} 张 · 外链 ${external} · 本地 ${local}` : '';
+  let text = imgs.length ? `图片 ${imgs.length} 张 · 外链 ${external} · 本地 ${local}` : '';
+  // 存储体积与容量风险提示（阶段 3，§4.4.6/§4.5）：只读统计，不改任何数据
+  const st = storageStats();
+  if (st.imageBytes > 0) text += (text ? ' · ' : '') + '本地图片约 ' + fmtBytes(st.imageBytes);
+  if (st.imageBytes >= IMAGE_WARN_BYTES) text += '（图片较多，存储占用大，请及时导出备份）';
+  if (st.risk !== 'ok') text += (text ? ' · ' : '') + '⚠️ 存储约 ' + fmtBytes(st.totalBytes) + '，将满请导出备份';
+  imageStatusEl.textContent = text;
 }
 
-function render() {
+/* render(force)：全量渲染（解析 → 消毒 → 主题内联 → 代码高亮 → H1 包装）。
+   force=true 时跳过移动端编辑态的延迟渲染（阶段 3，§4.3.7）：
+   复制/导出前必须拿到最新预览，平时调用仍走延迟渲染以免移动端
+   输入时反复全量解析。无参调用行为与 v1.1.0 完全一致。 */
+function render(force) {
   clearTimeout(renderTimer);
   updateStats();
-  if (matchMedia('(max-width:860px)').matches && document.body.classList.contains('mode-edit')) {
+  // 超大文稿温和提示（阶段 3，§4.3.8）：只提示一次，绝不截断或丢弃内容。
+  // 注意：按 UTF-8 近似字节数判断（byteLen，中文按 3 字节计），不用
+  // .length——中文在 JS 里只算 1 个单元，500KB 文稿的 .length 只有约 32 万。
+  // 先以 10 万字符预筛（500KB 文稿最少也有约 12.5 万字符，不会漏判），
+  // 小文稿不做全量计数。
+  if (editor.value.length > 100000) {
+    if (!largeDocWarned && byteLen(editor.value) > 500000) {
+      largeDocWarned = true;
+      toast('⚠️ 文稿较大（约 ' + Math.round(byteLen(editor.value) / 1024) + ' KB），内容已完整保留，渲染可能稍慢；建议分篇或导出备份');
+    }
+  } else largeDocWarned = false;
+  if (!force && mobileMQ.matches && document.body.classList.contains('mode-edit')) {
     previewDirty = true;
     return;
   }
   try {
     const t = getActiveTheme();
+    // 排版微调样式串在一次渲染内不变，算一次复用（阶段 3，§4.3.3）；
+    // 原先 tweakPCss() 是每个 <p> 都重算一次
+    const tweakP = tweakPCss(), tweakR = tweakRootCss(), tweakPad = tweakPadCss();
     preview.innerHTML = cleanHTML(marked.parse(editor.value));
     const map = { P: t.p, H1: t.h1, H2: t.h2, H3: t.h3, H4: t.h4, H5: t.h4 || t.h3, H6: t.h4 || t.h3,
       BLOCKQUOTE: t.blockquote, UL: t.ul, OL: t.ol, LI: t.li, TABLE: t.table, TH: t.th, TD: t.td,
       HR: t.hr, IMG: t.img, STRONG: t.strong, EM: t.em, DEL: t.del, A: t.a, FIGCAPTION: t.figcaption };
+    // 一次遍历同时做样式内联并收集 H1/PRE（阶段 3，§4.3.3）：
+    // 原先是 querySelectorAll('*')、'h1'、'pre' 三次全量遍历
+    const h1s = [], pres = [];
     preview.querySelectorAll('*').forEach(el => {
       let st = map[el.tagName];
       if (el.tagName === 'CODE') st = el.closest('pre') ? t.precode : t.code;
-      if (el.tagName === 'P') st = (st || '') + tweakPCss();
+      if (el.tagName === 'P') st = (st || '') + tweakP;
       const align = (el.tagName === 'TH' || el.tagName === 'TD') && el.getAttribute('align');
       const existing = el.getAttribute('style') || '';
       if (st || existing || align) el.setAttribute('style', (st || '') + existing + (align ? ';text-align:' + align + ';' : ''));
       if (el.tagName === 'A') { el.target = '_blank'; el.rel = 'noopener noreferrer'; }
       if (el.tagName === 'IMG') { el.loading = 'lazy'; el.decoding = 'async'; }
+      if (el.tagName === 'H1') h1s.push(el);
+      else if (el.tagName === 'PRE') pres.push(el);
     });
     if (currentTheme === 'tech' && t.h1Pill) {
-      preview.querySelectorAll('h1').forEach(h1 => {
+      h1s.forEach(h1 => {
         let pill = h1.querySelector(':scope > span[data-h1-pill]');
         if (!pill) {
           pill = document.createElement('span');
@@ -920,12 +1063,12 @@ function render() {
         });
       });
     }
-    preview.querySelectorAll('pre').forEach(pre => {
+    pres.forEach(pre => {
       pre.setAttribute('style', t.pre);
       const code = pre.querySelector('code');
       if (code) code.innerHTML = highlight(code.textContent, t.codeLight ? HL_PALETTES.light : HL_PALETTES.dark);
     });
-    preview.setAttribute('style', t.root + (canvasOn && t.canvas ? t.canvas : '') + tweakRootCss() + tweakPadCss());
+    preview.setAttribute('style', t.root + (canvasOn && t.canvas ? t.canvas : '') + tweakR + tweakPad);
     previewDirty = false;
     updateImageStatus();
   } catch (err) {
@@ -935,18 +1078,21 @@ function render() {
 }
 
 function scheduleRender() {
+  // 180ms 尾随防抖：同一防抖窗口内的多次输入只触发一次 render，
+  // 即重复渲染请求的合并点（阶段 3，§4.3.4）；render() 入口会清掉
+  // 未到期的定时器，同步调用方（复制/导出/切换）不会重复渲染。
   previewDirty = true;
   clearTimeout(renderTimer);
   renderTimer = setTimeout(render, 180);
 }
 
-/* ================= 公众号兼容复制 ================= */
-const flashCopy = () => {
-  const btn = $('#btnCopy'), old = btn.textContent;
-  btn.classList.add('done'); btn.textContent = '✓ 已复制';
-  setTimeout(() => { btn.classList.remove('done'); btn.textContent = old; }, 1800);
-};
-
+/* ============================================================
+   6. WeChatExportService —— 微信 HTML 转换
+   流程（方案 §4.2）：克隆预览 DOM → 微信结构降级（任务列表、details、
+   图片/链接属性）→ 外链转文末脚注（mp.weixin.qq.com 除外）→ 逐块
+   背景色与表格 bgcolor 兜底 → cleanHTML 安全检查 → 输出 HTML/纯文本。
+   始终基于预览 DOM 的克隆，绝不改写用户预览 DOM；不直接操作 UI。
+   ============================================================ */
 function normalizeForWechat(root) {
   root.querySelectorAll('input[type="checkbox"]').forEach(input => {
     const span = document.createElement('span');
@@ -968,9 +1114,8 @@ function normalizeForWechat(root) {
   root.querySelectorAll('img').forEach(img => { img.removeAttribute('loading'); img.removeAttribute('decoding'); });
   root.querySelectorAll('a').forEach(a => { a.removeAttribute('target'); a.removeAttribute('rel'); });
 }
-
 function getWechatHTML() {
-  if (previewDirty) render();
+  if (previewDirty) render(true); // 强制刷新：移动端编辑态下复制也必须用最新预览（阶段 3，§4.3.7）
   const t = getActiveTheme();
   const bgHex = (canvasOn && t.canvas) ? t.canvas.replace('background-color:', '').replace(/;/g, '').trim() : '';
   const bodyClone = preview.cloneNode(true);
@@ -1016,16 +1161,21 @@ function getWechatHTML() {
   const html = '<section style="width:100%;max-width:100%;box-sizing:border-box;background-color:' + (bgHex || '#ffffff') + ';">' + inner + '</section>';
   return { html: cleanHTML(html), plain: plain };
 }
-
-function openModal(id) { $(id).hidden = false; }
-function closeModals() { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); }
-function showFallback(html) {
-  $('#fallbackRich').innerHTML = cleanHTML(html);
-  $('#fallbackSource').value = html;
-  openModal('#fallbackModal');
-}
-
+/* ============================================================
+   7. ClipboardService —— 剪贴板复制
+   三路降级（方案 §4.2）：ClipboardItem 富文本 → execCommand 兼容复制 →
+   手动备用弹窗（富文本全选 / HTML 源码复制）。成功提示只在真实复制
+   成功后出现；不修改源 Markdown。
+   ============================================================ */
+const flashCopy = () => {
+  const btn = $('#btnCopy'), old = btn.textContent;
+  btn.classList.add('done'); btn.textContent = '✓ 已复制';
+  setTimeout(() => { btn.classList.remove('done'); btn.textContent = old; }, 1800);
+};
 async function copyWechat() {
+  // 先强制刷新预览再统计本地图片：移动端编辑态下预览可能是旧的，
+  // 旧预览里的图片数不能代表最新文稿（阶段 3，§4.3.7）
+  if (previewDirty) render(true);
   const localImages = preview.querySelectorAll('img[src^="data:"],img[src^="blob:"]').length;
   if (localImages && !confirm('检测到 ' + localImages + ' 张本地图片。公众号通常不能直接使用本地图片，建议先替换为素材地址。仍继续复制吗？')) return;
   const w = getWechatHTML(), html = w.html, plain = w.plain;
@@ -1037,23 +1187,66 @@ async function copyWechat() {
     })]);
     toast('✅ 已复制，去公众号后台粘贴'); flashCopy();
   } catch (_) {
-    const holder = document.createElement('div');
-    holder.contentEditable = 'true';
-    holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
-    holder.innerHTML = html;
-    document.body.appendChild(holder);
-    const sel = getSelection(), saved = [];
-    for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
-    const range = document.createRange(); range.selectNodeContents(holder);
-    sel.removeAllRanges(); sel.addRange(range);
+    // 兼容复制：先用 copy 事件直接写原始 HTML。旧的选区复制会让浏览器在
+    // 序列化选区时剥掉外层 <section> 包裹，行间画布底色随之丢失（块上背景
+    // 还在、块间缝隙变白，即 1.2.0 反馈的“行与行之间背景没了”）；
+    // copy 事件 + clipboardData.setData 可把原始 HTML 逐字节写入剪贴板。
     let ok = false;
-    try { ok = document.execCommand('copy'); } catch (_) {}
-    sel.removeAllRanges(); saved.forEach(r => sel.addRange(r)); holder.remove();
+    try {
+      let fired = false;
+      const onCopy = e => {
+        try {
+          e.clipboardData.setData('text/html', html);
+          e.clipboardData.setData('text/plain', plain);
+          e.preventDefault();
+          fired = true;
+        } catch (_) {}
+      };
+      document.addEventListener('copy', onCopy);
+      try { ok = document.execCommand('copy') && fired; } catch (_) { ok = false; }
+      document.removeEventListener('copy', onCopy);
+    } catch (_) { ok = false; }
+    if (!ok) {
+      const holder = document.createElement('div');
+      holder.contentEditable = 'true';
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      holder.innerHTML = html;
+      document.body.appendChild(holder);
+      const sel = getSelection(), saved = [];
+      for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
+      const range = document.createRange(); range.selectNodeContents(holder);
+      sel.removeAllRanges(); sel.addRange(range);
+      try { ok = document.execCommand('copy'); } catch (_) {}
+      sel.removeAllRanges(); saved.forEach(r => sel.addRange(r)); holder.remove();
+    }
     if (ok) { toast('✅ 已复制（兼容模式）'); flashCopy(); }
     else showFallback(html);
   }
 }
-
+let fallbackCopyHandler = null;
+function showFallback(html) {
+  $('#fallbackRich').innerHTML = cleanHTML(html);
+  $('#fallbackSource').value = html;
+  // 手动从富文本框复制时，选区序列化同样会剥掉 <section> 包裹而丢行间底色；
+  // 选区落在富文本框内时，用原始 HTML 覆盖剪贴板数据。
+  if (fallbackCopyHandler) document.removeEventListener('copy', fallbackCopyHandler);
+  fallbackCopyHandler = e => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    const rich = $('#fallbackRich');
+    if (!rich || !rich.contains(node.nodeType === 1 ? node : node.parentNode)) return;
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      e.clipboardData.setData('text/html', html);
+      e.clipboardData.setData('text/plain', tmp.textContent);
+      e.preventDefault();
+    } catch (_) {}
+  };
+  document.addEventListener('copy', fallbackCopyHandler);
+  openModal('#fallbackModal');
+}
 $('#btnSelectRich').addEventListener('click', () => {
   const range = document.createRange(); range.selectNodeContents($('#fallbackRich'));
   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range); toast('已全选，请按 Ctrl+C 或长按复制');
@@ -1063,10 +1256,14 @@ $('#btnCopySource').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(source.value); toast('✅ HTML 源码已复制'); }
   catch (_) { source.focus(); source.select(); document.execCommand('copy'); toast('已选中 HTML 源码'); }
 });
-document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', closeModals));
-document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) closeModals(); }));
 
-/* ================= 导出 / 草稿版本 ================= */
+
+/* ============================================================
+   8. FileService —— 文件导入与导出
+   MD/TXT 打开（UTF-8 优先、失败回 GB18030）、3MB 文稿上限、MD 导出
+   （UTF-8 BOM）、HTML 导出（样式内联 + cleanHTML）、文件名清理、
+   文件选择器与拖拽导入。不改主题配置、不管历史版本。
+   ============================================================ */
 function safeBaseName() {
   return ($('#fileName').textContent || 'article').replace(/\.(md|markdown|txt|html)$/i, '').replace(/[\\/:*?"<>|]/g, '_') || 'article';
 }
@@ -1080,23 +1277,100 @@ function exportMD() {
   toast('⬇ 已导出 Markdown');
 }
 function exportHTML() {
-  if (previewDirty) render();
+  if (previewDirty) render(true); // 强制刷新：移动端编辑态下导出也必须用最新预览（阶段 3，§4.3.7）
   const t = getActiveTheme();
   const title = esc($('#fileName').textContent || 'article');
   const doc = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title></head><body style="margin:0;background:#f7f8fa;"><section style="' + t.root + 'background-color:#fff;' + (canvasOn && t.canvas ? t.canvas : '') + tweakRootCss() + 'max-width:640px;margin:0 auto;' + tweakPadCss() + '">' + cleanHTML(preview.innerHTML) + '</section></body></html>';
   downloadBlob(doc, 'text/html;charset=utf-8', safeBaseName() + '.html'); toast('⬇ 已导出安全清理后的 HTML');
 }
+async function openFile(file) {
+  if (!file) return;
+  if (file.type.startsWith('image/')) return insertLocalImage(file);
+  // 浏览器没给出 MIME 时（如个别系统选择器），按图片扩展名走图片校验通道：
+  // insertLocalImage 会用 Image 解码实测，损坏文件仍会被拦下，不会把二进制当正文读入
+  if (!file.type && /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(file.name)) return insertLocalImage(file);
+  if (!/\.(md|markdown|txt)$/i.test(file.name) && file.type && !file.type.startsWith('text/')) { toast('❌ 仅支持 MD、Markdown 或文本文件'); return; }
+  if (file.size > 3 * 1024 * 1024) { toast('❌ 文件超过 3MB，请先拆分或清理'); return; }
+  try {
+    const buffer = await file.arrayBuffer(); let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+    catch (_) { text = new TextDecoder('gb18030').decode(buffer); }
+    if (!prepareReplace()) return;
+    setDocument(text.replace(/^\ufeff/, ''), file.name);
+    if (document.body.classList.contains('mode-edit')) toggleMode('view');
+    toast('📂 已打开 ' + file.name);
+  } catch (_) { toast('❌ 文件读取失败，请确认文件未损坏'); }
+}
+$('#fileInput').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragN = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); if (++dragN === 1) document.body.classList.add('dragging'); });
+document.addEventListener('dragleave', e => { e.preventDefault(); if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); } });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); dragN = 0; document.body.classList.remove('dragging'); openFile(e.dataTransfer.files[0]); });
+/* ============================================================
+   9. ImageService —— 图片读取与插入
+   文件选择 / 拖入 / 剪贴板粘贴三路导入，单张 2MB 上限，真实 MIME 校验
+   （file.type，由浏览器嗅探而非扩展名）+ data URL 前缀复核 + Image
+   解码校验（损坏图片拦下不插入）；FileReader 失败有提示；插入为
+   Markdown data URL，原图不压缩、不裁剪；多图 Base64 累计超 1MB
+   时提示存储占用。不管历史版本、不改主题。
+   ============================================================ */
+function insertLocalImage(file) {
+  if (!file) return;
+  if (file.type && !file.type.startsWith('image/')) { toast('❌ 仅支持图片文件'); return; }
+  if (!file.size) { toast('❌ 图片文件为空'); return; }
+  if (file.size > 2 * 1024 * 1024) { toast('❌ 本地图片不能超过 2MB'); return; }
+  const rd = new FileReader();
+  rd.onload = () => {
+    const dataUrl = rd.result;
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) { toast('❌ 图片读取失败'); return; }
+    // data URL 中的真实 MIME 须与浏览器给出的 file.type 一致（有 type 时才核对）
+    if (file.type && !dataUrl.toLowerCase().startsWith('data:' + file.type.toLowerCase())) { toast('❌ 图片格式不正确'); return; }
+    // 损坏图片校验：FileReader 能读出 data URL 不代表图片可解码，
+    // 用 Image 解码一次，失败则不插入，避免预览出现坏图占位
+    const probe = new Image();
+    probe.onload = () => {
+      const alt = (file.name || '本地图片').replace(/[\[\]\n]/g, '');
+      insertText('![' + alt + '](' + dataUrl + ')');
+      let msg = '⚠️ 本地图片仅供预览，复制前请替换为公众号素材地址';
+      // 多图 Base64 累计提示（阶段 3，§4.5）：含本次新增的约计体积
+      const st = storageStats();
+      const afterBytes = st.imageBytes + byteLen(dataUrl);
+      if (afterBytes >= IMAGE_WARN_BYTES) msg += '；本地图片已累计约 ' + fmtBytes(afterBytes) + '，存储占用较大，请及时导出备份';
+      toast(msg);
+    };
+    probe.onerror = () => toast('❌ 图片已损坏，无法插入');
+    probe.src = dataUrl;
+  };
+  rd.onerror = () => toast('❌ 图片读取失败');
+  rd.onabort = () => toast('❌ 图片读取失败');
+  rd.readAsDataURL(file);
+}
+editor.addEventListener('paste', e => {
+  const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
+  if (item) { e.preventDefault(); insertLocalImage(item.getAsFile()); }
+});
+/* ============================================================
+   10. DraftHistoryService —— 草稿与历史版本
+   草稿自动保存（400ms 防抖 + beforeunload 立即保存）、手动/自动快照
+   （去重、最多 8 份、写满提示导出备份）、历史恢复（含主题/配色/画布）、
+   替换前自动快照保护。只经 StorageService 读写，不碰文件下载。
+   ============================================================ */
 function getHistory() {
   try { const list = JSON.parse(store.get(KEY_HISTORY, '[]')); return Array.isArray(list) ? list : []; }
   catch (_) { return []; }
 }
 function snapshotCurrent() {
-  if (!editor.value.trim()) return;
+  // 返回值（阶段 3，§4.4.5）：true=已保存或已有相同版本；false=空文稿或写入失败。
+  // 调用方只有在返回 true 时才能显示“已保存”，写入失败时 store.set
+  // 已提示导出备份，此处绝不再报“已保存”。
+  if (!editor.value.trim()) return false;
   const list = getHistory();
-  if (list[0] && list[0].content === editor.value) return;
+  if (list[0] && list[0].content === editor.value) return true;
   list.unshift({ id: Date.now().toString(36), name: $('#fileName').textContent || '未命名.md', content: editor.value, theme: currentTheme, palette: currentPalette, canvas: canvasOn, savedAt: Date.now() });
-  store.set(KEY_HISTORY, JSON.stringify(list.slice(0, 8)));
+  if (!store.set(KEY_HISTORY, JSON.stringify(list.slice(0, 8)))) return false;
   renderHistory();
+  return true;
 }
 function renderHistory() {
   const host = $('#historyList'); host.textContent = '';
@@ -1127,53 +1401,88 @@ function setDocument(content, name) {
   editor.value = content; $('#fileName').textContent = name;
   store.set(KEY_NAME, name); saveDraft(true); render();
 }
-async function openFile(file) {
-  if (!file) return;
-  if (file.type.startsWith('image/')) return insertLocalImage(file);
-  if (!/\.(md|markdown|txt)$/i.test(file.name) && file.type && !file.type.startsWith('text/')) { toast('❌ 仅支持 MD、Markdown 或文本文件'); return; }
-  if (file.size > 3 * 1024 * 1024) { toast('❌ 文件超过 3MB，请先拆分或清理'); return; }
+/* ---- 存储故障时的明确恢复路径（阶段 3，§4.4.4）：草稿写入失败时，
+   在 Toast 提示之外再问一次是否立即导出 MD 备份；同一轮故障只问一次，
+   任一次写入成功后复位；导出本身不依赖 localStorage，且须经用户在
+   确认框里点头才执行，绝不自动覆盖文件 ---- */
+let backupOffered = false;
+function offerStorageBackup() {
+  if (backupOffered) return;
+  backupOffered = true;
   try {
-    const buffer = await file.arrayBuffer(); let text;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
-    catch (_) { text = new TextDecoder('gb18030').decode(buffer); }
-    if (!prepareReplace()) return;
-    setDocument(text.replace(/^\ufeff/, ''), file.name);
-    if (document.body.classList.contains('mode-edit')) toggleMode('view');
-    toast('📂 已打开 ' + file.name);
-  } catch (_) { toast('❌ 文件读取失败，请确认文件未损坏'); }
+    if (typeof confirm === 'function' && confirm('⚠️ 本地存储已满或不可用，草稿可能无法保存。是否立即导出 MD 备份？')) exportMD();
+  } catch (_) { /* 无 confirm 的环境只保留 Toast 提示 */ }
 }
-function insertLocalImage(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  if (file.size > 2 * 1024 * 1024) { toast('❌ 本地图片不能超过 2MB'); return; }
-  const rd = new FileReader();
-  rd.onload = () => {
-    const alt = (file.name || '本地图片').replace(/[\[\]\n]/g, '');
-    insertText('![' + alt + '](' + rd.result + ')');
-    toast('⚠️ 本地图片仅供预览，复制前请替换为公众号素材地址');
-  };
-  rd.onerror = () => toast('❌ 图片读取失败');
-  rd.readAsDataURL(file);
-}
-$('#fileInput').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
-$('#btnOpen').addEventListener('click', () => $('#fileInput').click());
-let dragN = 0;
-document.addEventListener('dragenter', e => { e.preventDefault(); if (++dragN === 1) document.body.classList.add('dragging'); });
-document.addEventListener('dragleave', e => { e.preventDefault(); if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); } });
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { e.preventDefault(); dragN = 0; document.body.classList.remove('dragging'); openFile(e.dataTransfer.files[0]); });
-editor.addEventListener('paste', e => {
-  const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
-  if (item) { e.preventDefault(); insertLocalImage(item.getAsFile()); }
-});
 function saveDraft(immediate = false) {
   clearTimeout(saveTimer);
-  const save = () => { store.set(KEY_DRAFT, editor.value); store.set(KEY_NAME, $('#fileName').textContent); };
+  const save = () => {
+    const ok = store.set(KEY_DRAFT, editor.value);
+    store.set(KEY_NAME, $('#fileName').textContent);
+    if (ok) backupOffered = false; else offerStorageBackup();
+  };
   if (immediate) save(); else saveTimer = setTimeout(save, 400);
 }
 editor.addEventListener('input', () => { scheduleRender(); saveDraft(); });
 window.addEventListener('beforeunload', () => saveDraft(true));
+/* ============================================================
+   11. FormattingService —— 一键格式化
+   代码块 / 行内代码 / 链接地址受保护（奇数段不处理）；正文处理：
+   清理行尾空格与多余空行、中英文/数字间加空格、中文后标点转全角、
+   直角引号化。纯函数，不碰 DOM、不碰剪贴板；选项状态 fmtOpt 见下。
+   修复（阶段 2，F-012 数据损坏级）：标点分支正则原先只有一个捕获组，
+   replace 回调第 3 参数实为匹配偏移量（数字），导致 `你好,世界` →
+   `你好1世界`；现给标点加第二个捕获组，回调 (m, c, p) 中的 p 即标点字符。
+   ============================================================ */
+/* ---- 一键格式化：代码块/行内代码/链接地址受保护 ---- */
+const PUNCT_MAP = { ',': '，', ';': '；', ':': '：', '!': '！', '?': '？' };
+function fmtPlain(s, o) {
+  if (!s) return s;
+  if (o.clean) {
+    s = s.replace(/[ \t]+$/gm, '');
+    s = s.replace(/\n{3,}/g, '\n\n');
+    s = s.replace(/([\u4e00-\u9fa5])[ \t]+([,.;:!?])/g, '$1$2');
+  }
+  if (o.space) {
+    s = s.replace(/([\u4e00-\u9fa5])([A-Za-z0-9])/g, '$1 $2');
+    s = s.replace(/([A-Za-z0-9])([\u4e00-\u9fa5])/g, '$1 $2');
+  }
+  if (o.punct) {
+    // 括号配对先于标点转换（阶段 4，遗留问题 3 已修）：修前标点分支先把
+    // `)` 转成 `）`，括号配对随后找不到 ASCII `)`，`你好(世界)` 会变成
+    // `你好(世界）`（半角左括号 + 全角右括号）。先配对再转标点：
+    // `你好(世界)` → `你好（世界）`；`)` 已不在时标点分支不再误伤。
+    s = s.replace(/\(([^()]*[\u4e00-\u9fa5][^()]*)\)/g, '（$1）');
+    s = s.replace(/([\u4e00-\u9fa5])\s*([,;:!?\)])\s*/g, (m, c, p) => c + (PUNCT_MAP[p] || (p === ')' ? '）' : p)));
+    s = s.replace(/([\u4e00-\u9fa5])\.(?!\d)/g, '$1。');
+  }
+  if (o.quote) s = s.replace(/"([^"\n]*[\u4e00-\u9fa5][^"\n]*)"/g, '「$1」');
+  return s;
+}
+function formatMarkdown(md, opt) {
+  // 奇数段为受保护片段：代码块/行内代码/链接
+  const segs = md.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\))/g);
+  for (let i = 0; i < segs.length; i += 2) segs[i] = fmtPlain(segs[i], opt);
+  return segs.join('');
+}
+let fmtOpt = (() => { try { return JSON.parse(store.get(KEY_FMT, '')) || { space: true, clean: true, punct: false, quote: false }; } catch (_) { return { space: true, clean: true, punct: false, quote: false }; } })();
+$('#btnOpen').addEventListener('click', () => $('#fileInput').click());
 
-/* ================= MD 快捷插入 ================= */
+
+/* ============================================================
+   12. UIController —— 界面控制
+   Toast、弹窗开关、MD 快捷插入、模式/主题/按钮绑定、格式化与排版
+   弹窗、脚注/暗色开关、全局快捷键。只做事件绑定与状态同步，
+   业务转换算法一律调用各服务，不自带算法。
+   ============================================================ */
+function toast(msg) {
+  const t = toastEl; t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function openModal(id) { $(id).hidden = false; }
+function closeModals() { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); if (fallbackCopyHandler) { document.removeEventListener('copy', fallbackCopyHandler); fallbackCopyHandler = null; } }
+document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', closeModals));
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) closeModals(); }));
+/* ---- MD 快捷插入 ---- */
 function insertText(text, selStart, selEnd) {
   const el = editor;
   const s = el.selectionStart, e = el.selectionEnd;
@@ -1234,8 +1543,7 @@ editor.addEventListener('keydown', e => {
   else if (k === 'i') { e.preventDefault(); ACTIONS.i(); }
   else if (k === 'k') { e.preventDefault(); ACTIONS.link(); }
 });
-
-/* ================= 模式 / 主题 / 按钮 ================= */
+/* ---- 模式 / 主题 / 按钮 ---- */
 function toggleMode(m) {
   document.body.classList.toggle('mode-edit', m === 'edit');
   document.body.classList.toggle('mode-view', m === 'view');
@@ -1289,13 +1597,13 @@ $('#btnCopy').addEventListener('click', copyWechat);
 $('#btnExport').addEventListener('click', exportHTML);
 $('#btnMd').addEventListener('click', exportMD);
 $('#btnHistory').addEventListener('click', () => { renderHistory(); openModal('#historyModal'); });
-$('#btnSnapshot').addEventListener('click', () => { snapshotCurrent(); toast('✅ 当前版本已保存'); });
+$('#btnSnapshot').addEventListener('click', () => {
+  if (!editor.value.trim()) { toast('⚠️ 当前文稿为空，无需保存'); return; }
+  if (snapshotCurrent()) toast('✅ 当前版本已保存');
+  // 写入失败时不报“已保存”：store.set 已提示导出备份（阶段 3，§4.4.5）
+});
 $('#btnExample').addEventListener('click', () => { if (prepareReplace()) setDocument(EXAMPLE, '示例文档.md'); });
-
-/* ===== 一键格式化 ===== */
-const KEY_FMT = 'md_fmt';
-let fmtOpt = (() => { try { return JSON.parse(store.get(KEY_FMT, '')) || { space: true, clean: true, punct: false, quote: false }; } catch (_) { return { space: true, clean: true, punct: false, quote: false }; } })();
-const FMT_IDS = [['fmtSpace', 'space'], ['fmtClean', 'clean'], ['fmtPunct', 'punct'], ['fmtQuote', 'quote']];
+/* ---- 一键格式化弹窗 ---- */
 $('#btnFmt').addEventListener('click', () => {
   FMT_IDS.forEach(([id, k]) => { $('#'+id).checked = !!fmtOpt[k]; });
   openModal('#fmtModal');
@@ -1303,21 +1611,13 @@ $('#btnFmt').addEventListener('click', () => {
 $('#btnFmtApply').addEventListener('click', () => {
   FMT_IDS.forEach(([id, k]) => { fmtOpt[k] = $('#'+id).checked; });
   store.set(KEY_FMT, JSON.stringify(fmtOpt));
-  snapshotCurrent();
+  const hadContent = !!editor.value.trim();
+  const snapOk = snapshotCurrent();
   editor.value = formatMarkdown(editor.value, fmtOpt);
   saveDraft(true); render(); closeModals();
-  toast('🧹 格式化完成（原稿已存入版本记录）');
+  toast('🧹 格式化完成' + (hadContent ? (snapOk ? '（原稿已存入版本记录）' : '（原稿未能存入版本记录，请导出备份）') : ''));
 });
-
-/* ===== 排版微调 ===== */
-const TWEAK_DEFS = [['twFs', 'tvFs', 'fs', 'px'], ['twLh', 'tvLh', 'lh', ''], ['twPs', 'tvPs', 'ps', 'px'], ['twPad', 'tvPad', 'pad', 'px']];
-function themeDefaults() {
-  const t = getActiveTheme();
-  return {
-    fs: parseFloat((t.root.match(/font-size:([\d.]+)px/) || [])[1]) || 15,
-    lh: parseFloat((t.root.match(/line-height:([\d.]+)/) || [])[1]) || 1.75
-  };
-}
+/* ---- 排版微调弹窗 ---- */
 function syncTweakUI() {
   const d = themeDefaults();
   TWEAK_DEFS.forEach(([inp, out, k, unit]) => {
@@ -1336,9 +1636,7 @@ TWEAK_DEFS.forEach(([inp, out, k, unit]) => {
 $('#btnTweakReset').addEventListener('click', () => {
   tweaks = {}; store.set(KEY_TWEAKS, '{}'); syncTweakUI(); render(); toast('↺ 已恢复主题默认排版');
 });
-
-/* ===== 外链脚注开关 ===== */
-const KEY_FOOT = 'md_footnote';
+/* ---- 外链脚注开关 ---- */
 let footOn = store.get(KEY_FOOT, '1') !== '0';
 const btnFoot = $('#btnFoot');
 const syncFootBtn = () => {
@@ -1350,9 +1648,7 @@ btnFoot.addEventListener('click', () => {
   footOn = !footOn; store.set(KEY_FOOT, footOn ? '1' : '0'); syncFootBtn();
   toast(footOn ? '🔗 复制时外链将转为文末脚注' : '外链保持原样（公众号可能剥掉）');
 });
-
-/* ===== 暗色预览 ===== */
-const KEY_DARK = 'md_darkprev';
+/* ---- 暗色预览开关 ---- */
 let darkOn = store.get(KEY_DARK, '0') === '1';
 const btnDark = $('#btnDark');
 const syncDarkBtn = () => {
@@ -1367,47 +1663,35 @@ btnDark.addEventListener('click', () => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModals();
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); snapshotCurrent(); toast('✅ 已保存到版本记录'); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    if (!editor.value.trim()) { toast('⚠️ 当前文稿为空，无需保存'); return; }
+    if (snapshotCurrent()) toast('✅ 已保存到版本记录');
+    // 写入失败时不报“已保存”：store.set 已提示导出备份（阶段 3，§4.4.5）
+  }
 });
-
-/* ================= 示例文档 ================= */
-const EXAMPLE = [
-'# 示例 · 排版效果一览',
-'',
-'打开自己的 `.md` 文件，或直接在这里粘贴写作。点击右上角 **⚡复制到公众号**，到公众号后台粘贴；折叠块和任务列表会自动做兼容处理。',
-'',
-'## 这是二级标题',
-'正文支持 **加粗强调**、*斜体*、~~删除线~~ 和 [链接](https://mp.weixin.qq.com)。',
-'外部链接复制时会自动转成文末脚注（公众号不支持外链跳转）：[MD 排版台](https://github.com)。',
-'> 引用块：本工具会把主题样式内联到正文，并在复制前清理危险 HTML；复杂标签仍建议在公众号后台复核。',
-'',
-'### 列表',
-'- 无序列表项一',
-'- 无序列表项二',
-'1. 有序列表项一',
-'2. 有序列表项二',
-'',
-'### 表格',
-'| 功能 | 说明 | 状态 |',
-'| --- | --- | --- |',
-'| 一键复制 | 富文本剪贴板 | ✅ |',
-'| 本地文件 | 手机/电脑通用 | ✅ |',
-'',
-'### 代码块',
-'```js',
-'const article = {',
-'  title: "阅读原文测试",',
-'  render: () => fullStyle()  // 全量样式，一个不少',
-'};',
-'```',
-'',
-'行内代码 `inline code` 效果如上。',
-'',
-'---',
-'*由 MD 排版台生成 · 样式全内联*'
-].join('\n');
-
-/* ================= 启动 ================= */
+/* ============================================================
+   13. Diagnostics / Test Hooks —— 诊断与测试钩子
+   本节不新增代码，仅记录既有的测试入口（经典脚本顶层声明天然挂在
+   window 上，测试直接调用，无需额外暴露）：
+   - tests/unit.mjs（node:vm 沙箱提取源码）：PUNCT_MAP、fmtPlain、
+     formatMarkdown、esc、safeBaseName、store、getHistory、
+     snapshotCurrent、renderHistory。
+   - tests/smoke.mjs（真实浏览器页内）：formatMarkdown、
+     normalizeForWechat、getWechatHTML、snapshotCurrent、render。
+   - tests/storage-compat.mjs：经 localStorage 读写验证新旧版本互通。
+   - tests/perf.mjs：四档文稿解析+渲染耗时测量（直接渲染/防抖输入两路）。
+   - tests/preview-dirty.mjs：移动端 previewDirty 三路强制刷新
+     （切预览/复制/导出）与超大文稿提示。
+   - tests/storage-prompts.mjs：存储体积统计与容量提示、写入失败
+     不报“已保存”与导出备份确认、图片 MIME/损坏/超限校验。
+   任何新增的 window 钩子都必须只读、无副作用，不得改变用户可见行为。
+   ============================================================ */
+/* ============================================================
+   14. App Bootstrap —— 启动
+   读草稿（无则载入 EXAMPLE）→ 恢复文件名 → 首次渲染 → 移动端默认
+   预览模式。必须是脚本中最后执行的顶层代码。
+   ============================================================ */
 const initialDraft = store.get(KEY_DRAFT, null);
 editor.value = initialDraft !== null ? initialDraft : EXAMPLE;
 $('#fileName').textContent = store.get(KEY_NAME, initialDraft === null ? '示例文档.md' : '未命名.md');
