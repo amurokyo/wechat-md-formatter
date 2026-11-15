@@ -16,8 +16,8 @@
 // 危险 HTML 被消毒、回归样例渲染、normalizeForWechat 降级、
 // 外链脚注编号与 mp.weixin.qq.com 排除。
 // 每个断言独立计数并打印 PASS/FAIL；任一失败退出码为 1。
-// 不测剪贴板实际写入（headless file:// 下 Clipboard API 不可靠，
-// 复制三路降级链路留给阶段 4 与微信后台实测）。
+// 剪贴板实际写入：§11 回归用例在授予 clipboard-read/write 权限的
+// 新 context 里实测（直通与兼容两路剪贴板内容逐字节比对）。
 
 import { chromium } from 'playwright-core';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -317,6 +317,37 @@ try {
   console.log('resource load errors (expected offline, ignored):', JSON.stringify(resourceErrors));
   check('页面无 JS 控制台错误（console.error）', jsConsoleErrors.length === 0, JSON.stringify(jsConsoleErrors.slice(0, 3)));
   check('页面加载无未捕获 JS 异常', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 3)));
+
+  // --- 11. 回归：兼容复制路径不丢行间背景（1.2.0 反馈） ---
+  // 旧的选区复制会让浏览器在序列化选区时剥掉外层 <section> 包裹，行间画布
+  // 底色随之丢失（块上背景还在、块间缝隙变白）；修复后兼容路径改用 copy
+  // 事件直写原始 HTML，剪贴板内容应与直通（ClipboardItem）路径逐字节一致。
+  // 需授予剪贴板读写权限（headless file:// 下默认不可读写剪贴板）。
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 }, permissions: ['clipboard-read', 'clipboard-write'] });
+  const page2 = await ctx2.newPage();
+  page2.on('pageerror', (err) => pageErrors.push(String(err && err.message || err)));
+  page2.on('dialog', (d) => d.accept());
+  await page2.goto(INDEX_URL);
+  await page2.waitForSelector('#preview', { timeout: 15000 });
+  await sleep(600);
+  await page2.fill('#editor', '# 行间背景回归\n\n第一段正文。\n\n第二段正文。\n\n## 小标题\n\n- 列表一\n- 列表二\n');
+  await sleep(700);
+  const wxDirect = await page2.evaluate(() => window.getWechatHTML().html);
+  await page2.evaluate(() => { window.ClipboardItem = undefined; });
+  await page2.click('#btnCopy');
+  await sleep(600);
+  const clipHtml = await page2.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      if (item.types.includes('text/html')) return await (await item.getType('text/html')).text();
+    }
+    return '';
+  });
+  check('回归（1.2.0）：兼容复制路径剪贴板 HTML 与直通一致（section 包裹与行间背景都在）',
+    clipHtml === wxDirect && clipHtml.includes('<section')
+    && (clipHtml.match(/background-color:/g) || []).length === (wxDirect.match(/background-color:/g) || []).length,
+    `clipLen=${clipHtml.length} directLen=${wxDirect.length}`);
+  await ctx2.close();
 } catch (err) {
   fail++;
   failures.push('smoke 流程异常：' + (err && err.message));
