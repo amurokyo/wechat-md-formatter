@@ -1,1 +1,77 @@
-IyBNRCDmjpLniYjlj7DvvIhXZUNoYXQgTUQgRm9ybWF0dGVy77yJCgrkuJPkuLrlvq7kv6HlhazkvJflj7fmiZPpgKDnmoTljZXmlofku7YgTWFya2Rvd24g5o6S54mI5bel5YW344CC5YaZ5aW9IE1hcmtkb3du77yM5LiA6ZSu5aSN5Yi25bim5qC85byP5YaF5a6577yM55u05o6l57KY6LS06L+b5YWs5LyX5Y+35ZCO5Y+w77yM5qC35byP6Zu25o2f5aSx44CCCgoqKumbtuS+nei1liDCtyDljZXmlofku7Ygwrcg56a757q/5Y+v55SoIMK3IOaVsOaNruS4jeWHuuacrOacuiDCtyB2MS4yLjAqKgoKIyMg54m55oCnCgotICoqOSDlpZfnsr7lv4Porr7orqHnmoTmlofnq6DkuLvpopgqKu+8muenkeaKgOmdkiAvIOaegeeugOm7keeZvSAvIOWFrOS8l+WPt+e7vyAvIOmck+iZuea4kOWPmCAvIOehrOacl+eyl+mHjiAvIOS5puWNt+Wui+S9kyAvIOiTneWbvuW3peeoiyAvIOaalue6uCAvIOadguW/l++8jOavj+Wll+W4puS4k+WxnueUu+W4g+W6leiJsgotICoq5Li76aKY6YWN6Imy5YiH5o2iKirvvJrmr4/kuKrkuLvpopjpg73lj6/lj6DliqDmtIvnuqIgLyDntKvmo6AgLyDmnY/pu4QgLyDokbHnu78gLyDnn7PmprTnuqIgLyDnhaTpu5EgLyDnu4DpnZLnu4DntKsgLyDnjoToibLphY3oibLvvJvpooTop4jjgIHlpI3liLbkuI7lr7zlh7rkv53mjIHkuIDoh7QKLSAqKuenkeaKgOmdkiBIMSDlnIbop5LmoIfpopjlnZcqKu+8muS4gOe6p+agh+mimOiHquWKqOa4suafk+S4uumaj+aWh+Wtl+WuveW6puaUtue8qeeahOWchuinkuiJsuWdl++8jOminOiJsui3n+maj+S4u+mimOmFjeiJsgotICoq5LiA6ZSu5aSN5Yi25Yiw5YWs5LyX5Y+3KirvvJrmiYDmnInmoLflvI/lhoXogZTliLAgYHN0eWxlPSIiYO+8iOW+ruS/oee8lui+keWZqOWPquiupOWGheiBlOagt+W8j++8ie+8jOiDjOaZr+iJsumAkOWdl+S4i+ayiSArIOihqOagvCBgYmdjb2xvcmAg5bGe5oCnICsg5Y+M5bGCIHNlY3Rpb24g5YyF6KO577yM5a6e5rWL57KY6LS06Zu25o2f5aSxCi0gKirlpJbpk77oh6rliqjovazohJrms6gqKu+8muWFrOS8l+WPt+S8muWJpeaOieWklumDqOmTvuaOpe+8jOWkjeWItuaXtuiHquWKqOaKiuWklumTvui9rOS4uiBg5paH5a2XWzFdYCArIOaWh+acq+mZhOW9le+8iGBtcC53ZWl4aW4ucXEuY29tYCDln5/lkI3pk77mjqXkv53nlZnvvIkKLSAqKuS4gOmUruagvOW8j+WMlioq77ya5Lit6Iux5paH5Yqg56m65qC844CB5Lit5paH5qCH54K56L2s5YWo6KeS44CB55u06KeS5byV5Y+35YyW44CB5riF55CG56m655m94oCU4oCU5Luj56CB5Z2XL+ihjOWGheS7o+eggS/pk77mjqXlnLDlnYDlj5fkv53miqTkuI3lj5flvbHlk40KLSAqKuaOkueJiOW+ruiwgyoq77ya5a2X5Y+3IC8g6KGM6auYIC8g5q616LedIC8g6aG16Z2i55WZ55m95ruR5p2G5a6e5pe26LCD6IqC77yM6aKE6KeI5Y2z5omA5b6XCi0gKirmmpfpu5HmqKHlvI/pooTop4gqKu+8mui/keS8vOaooeaLn+W+ruS/oea3seiJsuaooeW8j+S4i+eahOaYvuekuuaViOaenO+8jOWPkeW4g+WJjemihOajgAotICoq6I2J56i/54mI5pysKirvvJrmiYvliqggKyDmm7/mjaLliY3oh6rliqjlv6vnhafvvIzmnIDlpJrkv53nlZkgOCDkuKrniYjmnKzvvIzniYjmnKzorrDlvZXljIXlkKvkuLvpopjkuI7phY3oibIKLSAqKuacrOWcsOWbvueJhyoq77ya5ouW5YWlL+eymOi0tOWbvueJh+iHquWKqOi9rCBiYXNlNjQg5o+S5YWl77yI5ZCrIDJNQiDpmZDliLbkuI7lpI3liLbliY3mj5DphpLvvIkKLSAqKuWvvOWHuioq77ya5bim5qC85byPIEhUTUzvvIjlj6/nm7TkvKDpnZnmgIHmiZjnrqHlvZPjgIzpmIXor7vljp/mlofjgI3okL3lnLDpobXvvIkvIE1hcmtkb3duIOa6kOaWh+S7tgotICoq5a6J5YWoKirvvJpET01QdXJpZnkg5YWo6YeP5raI5q+S77yMQ1NQIOmYsuaKpO+8jOato+aWh+S7heWtmOa1j+iniOWZqOacrOWcsAoKIyMg5b+r6YCf5byA5aeLCgojIyMg5pa55byP5LiA77ya55u05o6l5L2/55So77yI5o6o6I2Q77yJCgrkuIvovb0gW2BpbmRleC5odG1sYF0oaW5kZXguaHRtbCnvvIzlj4zlh7vnlKjmtY/op4jlmajvvIhDaHJvbWUgLyBFZGdl77yJ5omT5byA5Y2z5Y+v77yM5peg6ZyA5a6J6KOF44CB5peg6ZyA6IGU572R44CCCgojIyMg5pa55byP5LqM77ya5Zyo57q/54mICgrpg6jnvbLlkI7nmoTlnKjnur/pk77mjqXnm7TmjqXorr/pl67vvIjop4HlkIQgZm9yayAvIOmDqOe9suivtOaYju+8ieOAggoKIyMjIOaWueW8j+S4ie+8mua6kOeggeaehOW7ugoKYGBgYmFzaApnaXQgY2xvbmUgaHR0cHM6Ly9naXRodWIuY29tL2FtdXJva3lvL3dlY2hhdC1tZC1mb3JtYXR0ZXIuZ2l0CmNkIHdlY2hhdC1tZC1mb3JtYXR0ZXIKcHl0aG9uIGJ1aWxkLnB5ICAgIyDlsIYgdmVuZG9yIOW6k+WGheiBlOi/m+WNleaWh+S7tu+8jOS6p+WHuiBpbmRleC5odG1sCmBgYAoKIyMg6aG555uu57uT5p6ECgpgYGAK4pSc4pSA4pSAIGluZGV4Lmh0bWwgICAgICAgICAgIyDmnoTlu7rkuqfnianvvJrljZXmlofku7bmiJDlk4HvvIzlj6/nm7TmjqXkvb/nlKgK4pSc4pSA4pSAIGVkaXRvci5zcmMuaHRtbCAgICAgIyDmupDmqKHmnb/vvIjkuJrliqHku6PnoIHlnKjov5nph4zmlLnvvIkK4pSc4pSA4pSAIGJ1aWxkLnB5ICAgICAgICAgICAgIyDmnoTlu7rohJrmnKzvvJrmqKHmnb8gKyDlupPljp/mlpkg4oaSIGluZGV4Lmh0bWwK4pSc4pSA4pSAIHZlbmRvci8K4pSCICAg4pSc4pSA4pSAIG1hcmtlZC5taW4uanMgICAjIG1hcmtlZCB2MTIuMC4yIChNSVQpCuKUgiAgIOKUlOKUgOKUgCBwdXJpZnkubWluLmpzICAgIyBET01QdXJpZnkgMy40LjE3IChBcGFjaGUtMi4wIC8gTVBMLTIuMCkK4pSc4pSA4pSAIENIQU5HRUxPRy5tZCAgICAgICAgIyDniYjmnKzlj5jmm7TorrDlvZUK4pSU4pSA4pSAIFJFQURNRS5tZApgYGAKCj4g5rOo77yaYHZlbmRvci9gIOS4i+eahCBgLmpzYCDkv53lrZjnmoTmmK8gSFRNTCBgPHNjcmlwdD5gIOWdl+WOn+aWh++8iOWQq+mmluWwvuaNouihjO+8ie+8jOS+m+aehOW7uuiEmuacrOWtl+iKgue6p+i/mOWOn++8jOivt+WLv+ebtOaOpeS9nOS4uiBKUyDmqKHlnZflvJXnlKjjgIIKCiMjIOW+ruS/oeWFvOWuueaAp+iuvuiuoQoK5YWs5LyX5Y+357yW6L6R5Zmo77yIUHJvc2VNaXJyb3Ig5bqV5bGC77yJ57KY6LS05pe255qE55yf5a6e6KeE5YiZ77yM5pys6aG555uu6ZKI5a+55oCn5aSE55CG77yaCgp8IOW+ruS/oeihjOS4uiB8IOacrOmhueebruWvueetliB8CnwtLS0tLS0tLS0tfC0tLS0tLS0tLS0tfAp8IOWPquiupOWGheiBlOagt+W8j++8jGA8c3R5bGU+YC9jbGFzcyDlhajpg6jkuKLlvIMgfCDmiYDmnInkuLvpopjmoLflvI/pgJDmoIfnrb7lhpnlhaUgYHN0eWxlPSIiYCB8Cnwg5Lya5Yml5aSW6YOo6IOM5pmv5Zu+44CB5riQ5Y+Y6IOM5pmvIHwg55S75biD5YWo6YOo5L2/55So5a6e6ImyIGBiYWNrZ3JvdW5kLWNvbG9yYCB8Cnwg57KY6LS05pe25ouN5bmz5aSW5bGC5a655ZmoIHwg5aSW5bGC5aSnIHNlY3Rpb24gKyDlhoXlsYLlrrnlmaggKyDpgJDlnZfog4zmma/kuInlsYLkv53pmakgfAp8IHN0eWxlIOWxnuaAp+WPr+iDveiiq+a4heeQhiB8IOihqOagvOWNleWFg+agvOi/veWKoOiAgeW8jyBgYmdjb2xvcmAg5bGe5oCn5YWc5bqVIHwKfCDlhoXogZTmoLflvI/lkKvlj4zlvJXlj7fkvJrmiKrmlq3lsZ7mgKcgfCDlhajpg6jlrZfkvZPlkI3kuI3luKblvJXlj7fvvIhDU1Mg6KeE6IyD5YWB6K6477yJIHwKfCDliaUgYDxkZXRhaWxzPmDjgIFgPGlucHV0PmAg562J5qCH562+IHwg5aSN5Yi25YmN6Ieq5Yqo6ZmN57qn5Li65YW85a6557uT5p6EIHwKfCDkuI3lhYHorrjohJrmnKwv5Yqo55S7IHwg5q2j5paH6Zu2IGBAa2V5ZnJhbWVzYO+8jOeJueaViOS7heWtmOWcqOS6jue8lui+keWZqCBVSSB8CgojIyDoh7TosKIKCuiuvuiuoeaAnei3r+WPguiAg+S6hui/meS6m+S8mOengOeahOW8gOa6kOmhueebru+8mltkb29jcy9tZF0oaHR0cHM6Ly9naXRodWIuY29tL2Rvb2NzL21kKeOAgVtXZU1EXShodHRwczovL2dpdGh1Yi5jb20vdGVubmdveGFycy9XZU1EKeOAgVt3ZWNoYXQtZm9ybWF0dGVyIChUeXBlWmVuKV0oaHR0cHM6Ly9naXRodWIuY29tL21zcHJpbmdqYWRlL3dlY2hhdC1mb3JtYXR0ZXIp44CBW0NoaWNQYWdlXShodHRwczovL2dpdGh1Yi5jb20vam9la2luZC9jaGljcGFnZSnjgIFbbWRlZGl0b3JdKGh0dHBzOi8vZ2l0aHViLmNvbS94aWFvYm94L21kZWRpdG9yKeOAggoKIyMgTGljZW5zZQoKW01JVF0oTElDRU5TRSkgwqkgMjAyNiBhbXVyb2t5bwoK56ys5LiJ5pa55bqT77yaW21hcmtlZF0oaHR0cHM6Ly9naXRodWIuY29tL21hcmtlZGpzL21hcmtlZCkgKE1JVCnjgIFbRE9NUHVyaWZ5XShodHRwczovL2dpdGh1Yi5jb20vY3VyZTUzL0RPTVB1cmlmeSkgKEFwYWNoZS0yLjAgLyBNUEwtMi4wKQo=
+# MD 排版台（WeChat MD Formatter）
+
+专为微信公众号打造的单文件 Markdown 排版工具。写好 Markdown，一键复制带格式内容，直接粘贴进公众号后台，样式零损失。
+
+**零依赖 · 单文件 · 离线可用 · 数据不出本机 · v1.2.0**
+
+## 特性
+
+- **9 套精心设计的文章主题**：科技青 / 极简黑白 / 公众号绿 / 霓虹渐变 / 硬朗粗野 / 书卷宋体 / 蓝图工程 / 暖纸 / 杂志，每套带专属画布底色
+- **主题配色切换**：每个主题都可叠加洋红 / 紫棠 / 杏黄 / 葱绿 / 石榴红 / 煤黑 / 绀青绀紫 / 玄色配色；预览、复制与导出保持一致
+- **科技青 H1 圆角标题块**：一级标题自动渲染为随文字宽度收缩的圆角色块，颜色跟随主题配色
+- **一键复制到公众号**：所有样式内联到 `style=""`（微信编辑器只认内联样式），背景色逐块下沉 + 表格 `bgcolor` 属性 + 双层 section 包裹，实测粘贴零损失
+- **外链自动转脚注**：公众号会剥掉外部链接，复制时自动把外链转为 `文字[1]` + 文末附录（`mp.weixin.qq.com` 域名链接保留）
+- **一键格式化**：中英文加空格、中文标点转全角、直角引号化、清理空白——代码块/行内代码/链接地址受保护不受影响
+- **排版微调**：字号 / 行高 / 段距 / 页面留白滑杆实时调节，预览即所得
+- **暗黑模式预览**：近似模拟微信深色模式下的显示效果，发布前预检
+- **草稿版本**：手动 + 替换前自动快照，最多保留 8 个版本，版本记录包含主题与配色
+- **本地图片**：拖入/粘贴图片自动转 base64 插入（含 2MB 限制与复制前提醒）
+- **导出**：带格式 HTML（可直传静态托管当「阅读原文」落地页）/ Markdown 源文件
+- **安全**：DOMPurify 全量消毒，CSP 防护，正文仅存浏览器本地
+
+## 快速开始
+
+### 方式一：直接使用（推荐）
+
+下载 [`index.html`](index.html)，双击用浏览器（Chrome / Edge）打开即可，无需安装、无需联网。
+
+### 方式二：在线版
+
+部署后的在线链接直接访问（见各 fork / 部署说明）。
+
+### 方式三：源码构建
+
+```bash
+git clone https://github.com/amurokyo/wechat-md-formatter.git
+cd wechat-md-formatter
+python build.py   # 将 vendor 库内联进单文件，产出 index.html
+```
+
+## 项目结构
+
+```
+├── index.html          # 构建产物：单文件成品，可直接使用
+├── editor.src.html     # 源模板（业务代码在这里改）
+├── build.py            # 构建脚本：模板 + 库原料 → index.html
+├── vendor/
+│   ├── marked.min.js   # marked v12.0.2 (MIT)
+│   └── purify.min.js   # DOMPurify 3.4.17 (Apache-2.0 / MPL-2.0)
+├── CHANGELOG.md        # 版本变更记录
+└── README.md
+```
+
+> 注：`vendor/` 下的 `.js` 保存的是 HTML `<script>` 块原文（含首尾换行），供构建脚本字节级还原，请勿直接作为 JS 模块引用。
+
+## 微信兼容性设计
+
+公众号编辑器（ProseMirror 底层）粘贴时的真实规则，本项目针对性处理：
+
+| 微信行为 | 本项目对策 |
+|----------|-----------|
+| 只认内联样式，`<style>`/class 全部丢弃 | 所有主题样式逐标签写入 `style=""` |
+| 会剥外部背景图、渐变背景 | 画布全部使用实色 `background-color` |
+| 粘贴时拍平外层容器 | 外层大 section + 内层容器 + 逐块背景三层保险 |
+| style 属性可能被清理 | 表格单元格追加老式 `bgcolor` 属性兜底 |
+| 内联样式含双引号会截断属性 | 全部字体名不带引号（CSS 规范允许） |
+| 剥 `<details>`、`<input>` 等标签 | 复制前自动降级为兼容结构 |
+| 不允许脚本/动画 | 正文零 `@keyframes`，特效仅存在于编辑器 UI |
+
+## 致谢
+
+设计思路参考了这些优秀的开源项目：[doocs/md](https://github.com/doocs/md)、[WeMD](https://github.com/tenngoxars/WeMD)、[wechat-formatter (TypeZen)](https://github.com/mspringjade/wechat-formatter)、[ChicPage](https://github.com/joekind/chicpage)、[mdeditor](https://github.com/xiaobox/mdeditor)。
+
+## License
+
+[MIT](LICENSE) © 2026 amurokyo
+
+第三方库：[marked](https://github.com/markedjs/marked) (MIT)、[DOMPurify](https://github.com/cure53/DOMPurify) (Apache-2.0 / MPL-2.0)
