@@ -2597,6 +2597,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
   .mbtn.sep { width: 1px; height: 20px; padding: 0; margin: 0 4px; background: var(--line); pointer-events: none; }
   #previewScroll {
     flex: 1; overflow-y: auto; padding: 24px 20px 60px;
+    position: relative; /* 行同步高亮层 #syncHL 的定位基准（1.2.1） */
   }
   #preview {
     max-width: 640px; margin: 0 auto;
@@ -2604,6 +2605,29 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     padding: 26px 22px 40px;
     min-height: 100%;
     box-shadow: 0 6px 30px rgba(0,0,0,.45);
+  }
+
+  /* ===== 行同步高亮（1.2.1）：编辑光标所在行 → 预览对应块描边高亮 =====
+     只在工具界面内显示：高亮层是 #preview 的兄弟节点（不在 #preview 内），
+     复制/导出只取 #preview 的克隆，永远不会带进公众号 HTML；预览 DOM
+     元素本身不加任何 class/style，复制快照与 1.2.0 逐字节一致。
+     与 md 格式区分：不用色块填充（引用块/代码块是背景色块），只用描边
+     框 + “当前行”角标，一眼就能分清这是工具的定位提示，不是正文格式。
+     暗色预览的滤镜只作用于 #preview，不作用于高亮层，描边在深色下
+     依然是青色，始终可见。 */
+  #syncHL {
+    position: absolute; display: none; pointer-events: none; z-index: 3;
+    box-sizing: border-box;
+    border: 2px solid var(--cyan); border-radius: 10px;
+    background: rgba(34,211,238,.06);
+    box-shadow: 0 0 0 1px rgba(34,211,238,.12), 0 0 16px rgba(34,211,238,.16);
+    transition: top .12s ease, height .12s ease;
+  }
+  #syncHLTag {
+    position: absolute; top: -11px; left: 14px;
+    background: var(--cyan); color: #04121c;
+    font-size: 11px; font-weight: 800; letter-spacing: 1px; line-height: 1;
+    padding: 4px 8px; border-radius: 999px; white-space: nowrap;
   }
 
   /* ===== 底栏 ===== */
@@ -2857,7 +2881,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
   </section>
   <section class="pane" id="paneView">
     <span class="pane-label">WECHAT PREVIEW</span>
-    <div id="previewScroll"><div id="preview"></div></div>
+    <div id="previewScroll"><div id="preview"></div><div id="syncHL" aria-hidden="true"><span id="syncHLTag">当前行</span></div></div>
   </section>
 </main>
 
@@ -3491,7 +3515,11 @@ function render(force) {
     // 排版微调样式串在一次渲染内不变，算一次复用（阶段 3，§4.3.3）；
     // 原先 tweakPCss() 是每个 <p> 都重算一次
     const tweakP = tweakPCss(), tweakR = tweakRootCss(), tweakPad = tweakPadCss();
-    preview.innerHTML = cleanHTML(marked.parse(editor.value));
+    // 一次 lexer 供两处用：marked.parser(tokens) 与 marked.parse(md) 输出
+    // 逐字节一致（已实测 regression.md / dangerous.md），行同步映射
+    // 直接复用这批 token，不再单独 lex 一次（1.2.1 性能）。
+    const tokens = marked.lexer(editor.value);
+    preview.innerHTML = cleanHTML(marked.parser(tokens));
     const map = { P: t.p, H1: t.h1, H2: t.h2, H3: t.h3, H4: t.h4, H5: t.h4 || t.h3, H6: t.h4 || t.h3,
       BLOCKQUOTE: t.blockquote, UL: t.ul, OL: t.ol, LI: t.li, TABLE: t.table, TH: t.th, TD: t.td,
       HR: t.hr, IMG: t.img, STRONG: t.strong, EM: t.em, DEL: t.del, A: t.a, FIGCAPTION: t.figcaption };
@@ -3536,6 +3564,10 @@ function render(force) {
     preview.setAttribute('style', t.root + (canvasOn && t.canvas ? t.canvas : '') + tweakR + tweakPad);
     previewDirty = false;
     updateImageStatus();
+    lineMap = buildLineMap(editor.value, tokens); // 行同步高亮映射（1.2.1）：校验失败则停用，不亮错
+    // 高亮定位放下一帧：此时 DOM 刚改完，直接读 rect 会强制同步布局
+    // （50KB 文稿约 +25ms）；下一帧浏览器已自然布局，读 rect 不额外花钱。
+    requestAnimationFrame(() => syncHighlight(false));
   } catch (err) {
     console.error(err);
     toast('❌ 渲染失败：' + err.message);
@@ -3549,6 +3581,133 @@ function scheduleRender() {
   previewDirty = true;
   clearTimeout(renderTimer);
   renderTimer = setTimeout(render, 180);
+}
+
+/* ============================================================
+   5.5 SyncHighlightService —— 编辑-预览行同步高亮（1.2.1）
+   编辑光标所在行 → 预览里对应的块描边高亮。设计约束：
+   - 只动工具界面，不动正文：高亮层 #syncHL 是 #preview 的兄弟节点，
+     不在 #preview 内；复制/导出只克隆 #preview，永远不会带进公众号
+     HTML；预览 DOM 元素本身不加任何 class/style，复制快照与 1.2.0
+     逐字节一致。
+   - 显示方式与 md 格式区分：描边 + “当前行”角标，不用色块填充；
+     引用块/代码块是背景色块，这里是描边框，一眼就能分清。
+   - 行映射：marked.lexer 切块，每块（HTML 开闭标签成组，如 <details>）
+     单独 parse 数顶层元素数，与预览子元素一一对应；块在原文中的位置
+     用 indexOf 定位（lexer 会丢掉纯链接定义段，行数按横跨行算）。
+     元素总数对不上就整篇停用同步，宁可不亮也不亮错。超大文稿
+     （>100KB 或 >800 块）跳过映射，渲染性能与 1.2.0 持平。
+   - 跟随编辑光标：鼠标点到哪行、方向键移到哪行，预览就高亮哪一块；
+     光标落在空行上时高亮下一块，文末空行高亮上一块。
+   ============================================================ */
+const SYNC_MAX_BYTES = 100000, SYNC_MAX_BLOCKS = 800;
+const SYNC_VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+let lineMap = null; // { blocks: [{start, end, first, last}], childCount }
+function syncScanTags(raw, stack) {
+  // 扫描 HTML 块里的标签，维护未闭合标签栈（仅跟踪块级 HTML 分组用；
+  // 自闭合与空元素不入栈；属性值里的 > 可能误判，是可接受的启发式）。
+  const re = /<\/?([A-Za-z][A-Za-z0-9]*)\b[^>]*>/g;
+  let m;
+  while ((m = re.exec(raw))) {
+    const tag = m[1].toLowerCase();
+    if (SYNC_VOID_TAGS.has(tag)) continue;
+    if (m[0][1] === '/') {
+      if (stack.length && stack[stack.length - 1] === tag) stack.pop();
+    } else if (!/\/\s*>$/.test(m[0])) stack.push(tag);
+  }
+  return stack;
+}
+function buildLineMap(md, lexed) {
+  try {
+    if (!md || md.length > SYNC_MAX_BYTES) return null;
+    const tokens = lexed || marked.lexer(md);
+    if (tokens.length > SYNC_MAX_BLOCKS) return null;
+    // 行号表：一次扫描记下每个 \n 的位置，行号用二分查；不要每块都
+    // slice 全文数 \n，那是 O(n²)，50KB 文稿能多出几十毫秒。
+    const nlPos = [];
+    for (let k = md.indexOf('\n'); k !== -1; k = md.indexOf('\n', k + 1)) nlPos.push(k);
+    const lineOf = (off) => {
+      let lo = 0, hi = nlPos.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (nlPos[mid] < off) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    const tmp = document.createElement('div');
+    const blocks = [];
+    let cursor = 0, childCount = 0, i = 0;
+    while (i < tokens.length) {
+      const tok = tokens[i];
+      if (tok.type === 'space') { i++; continue; }
+      // HTML 块分组：<details> 这类块会被 lexer 拆成“开标签 / 正文 / 闭标签”
+      // 三个 token，整组只对应预览里的 1 个顶层元素；不成组数会多算。
+      // 栈非空时把后续 token 并入同一组，直到配对的闭标签出现。
+      const raws = [tok.raw];
+      let j = i;
+      const stack = tok.type === 'html' ? syncScanTags(tok.raw, []) : [];
+      while (stack.length && j + 1 < tokens.length) {
+        j++;
+        raws.push(tokens[j].raw);
+        if (tokens[j].type === 'html') syncScanTags(tokens[j].raw, stack);
+      }
+      const groupRaw = raws.join('');
+      const idx = md.indexOf(groupRaw, cursor);
+      if (idx === -1) return null; // 定位不到原文，宁可停用
+      // 行号直接数原文里的 \n，不用增量累加：增量算会在“上一块原文
+      // 不以 \n 结尾”（段落/列表/代码块）时把分隔空行的第一个 \n 重复
+      // 算成新行，导致后面所有块的行号整体偏大。
+      const start = lineOf(idx);
+      const end = lineOf(idx + groupRaw.length) + (groupRaw.endsWith('\n') ? 0 : 1);
+      cursor = idx + groupRaw.length;
+      // 元素数：除 HTML 块外每块恰好 1 个顶层元素（标题/段落/列表/
+      // 代码/表格/引用/分隔线），不用逐块 parse；HTML 块（成组或单块）
+      // 元素数不定（0..n），才单独 parse 计数。总数校验仍在：假设
+      // 不成立（例如段落只剩链接定义）时总数对不上，整篇停用同步。
+      let n = 1;
+      if (j !== i || tok.type === 'html') {
+        tmp.innerHTML = cleanHTML(marked.parse(groupRaw));
+        n = tmp.childElementCount;
+        tmp.innerHTML = '';
+      }
+      if (n > 0) { blocks.push({ start, end, first: childCount, last: childCount + n - 1 }); childCount += n; }
+      i = j + 1;
+    }
+    if (childCount !== preview.childElementCount) return null;
+    return { blocks, childCount };
+  } catch (_) { return null; }
+}
+function lineToBlock(l) {
+  if (!lineMap) return null;
+  const bs = lineMap.blocks;
+  for (let i = 0; i < bs.length; i++) {
+    if (l >= bs[i].start && l < bs[i].end) return bs[i];
+    if (l < bs[i].start) return bs[i]; // 空行：高亮下一块
+  }
+  return bs.length ? bs[bs.length - 1] : null; // 文末空行：高亮上一块
+}
+function caretLine() {
+  const pos = editor.selectionStart || 0;
+  return (editor.value.slice(0, pos).match(/\n/g) || []).length;
+}
+function syncHighlight(scroll) {
+  const hl = $('#syncHL');
+  if (!hl) return;
+  if (!lineMap || !editor.value.trim()) { hl.style.display = 'none'; return; }
+  const pr = preview.getBoundingClientRect();
+  if (!pr.width) { hl.style.display = 'none'; return; } // 预览不可见（移动端编辑态）
+  const block = lineToBlock(caretLine());
+  if (!block) { hl.style.display = 'none'; return; }
+  const kids = preview.children;
+  const first = kids[block.first], last = kids[block.last];
+  if (!first || !last) { hl.style.display = 'none'; return; }
+  const sc = $('#previewScroll');
+  const cr = sc.getBoundingClientRect();
+  const fr = first.getBoundingClientRect(), lr = last.getBoundingClientRect();
+  const pad = 6;
+  hl.style.display = 'block';
+  hl.style.left = (pr.left - cr.left + sc.scrollLeft - pad) + 'px';
+  hl.style.top = (fr.top - cr.top + sc.scrollTop - pad) + 'px';
+  hl.style.width = (pr.width + pad * 2) + 'px';
+  hl.style.height = (lr.bottom - fr.top + pad * 2) + 'px';
+  if (scroll && (fr.top < cr.top + 4 || lr.bottom > cr.bottom - 4)) first.scrollIntoView({ block: 'nearest' });
 }
 
 /* ============================================================
@@ -3888,6 +4047,13 @@ function saveDraft(immediate = false) {
   if (immediate) save(); else saveTimer = setTimeout(save, 400);
 }
 editor.addEventListener('input', () => { scheduleRender(); saveDraft(); });
+/* ---- 行同步高亮联动（1.2.1）：光标移动 → 预览高亮对应块 ---- */
+editor.addEventListener('click', () => syncHighlight(true));
+editor.addEventListener('keyup', () => syncHighlight(true));
+editor.addEventListener('select', () => syncHighlight(true));
+editor.addEventListener('focus', () => syncHighlight(false));
+document.addEventListener('selectionchange', () => { if (document.activeElement === editor) syncHighlight(true); });
+window.addEventListener('resize', () => syncHighlight(false));
 window.addEventListener('beforeunload', () => saveDraft(true));
 /* ============================================================
    11. FormattingService —— 一键格式化
@@ -4017,6 +4183,7 @@ function toggleMode(m) {
   $('#tabEdit').setAttribute('aria-selected', m === 'edit' ? 'true' : 'false');
   $('#tabView').setAttribute('aria-selected', m === 'view' ? 'true' : 'false');
   if (m === 'view' && previewDirty) render();
+  if (m === 'view') requestAnimationFrame(() => syncHighlight(false)); // 切回预览时重定位高亮（1.2.1）
 }
 $('#tabEdit').addEventListener('click', () => toggleMode('edit'));
 $('#tabView').addEventListener('click', () => toggleMode('view'));
@@ -4144,6 +4311,8 @@ document.addEventListener('keydown', e => {
      snapshotCurrent、renderHistory。
    - tests/smoke.mjs（真实浏览器页内）：formatMarkdown、
      normalizeForWechat、getWechatHTML、snapshotCurrent、render。
+     §12（1.2.1）：行同步高亮——映射正确、高亮不进复制 HTML、
+     暗色下可见、空文档不高亮。
    - tests/storage-compat.mjs：经 localStorage 读写验证新旧版本互通。
    - tests/perf.mjs：四档文稿解析+渲染耗时测量（直接渲染/防抖输入两路）。
    - tests/preview-dirty.mjs：移动端 previewDirty 三路强制刷新
