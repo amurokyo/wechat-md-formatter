@@ -1,6 +1,6 @@
 {
   "name": "wechat-md-formatter-tests",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "wechat-md-formatter 自动化测试（仅测试工具依赖，不进入产品运行时）",
   "type": "module",

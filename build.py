@@ -312,7 +312,7 @@ def run_build(check_only: bool) -> dict:
     out_bytes = out.encode('utf-8')
     info = {
         'built_at_utc': datetime.now(timezone.utc).isoformat(),
-        'builder': 'build.py (wechat-md-formatter 1.2.0)',
+        'builder': 'build.py (wechat-md-formatter 1.2.1)',
         'source': {
             'editor.src.html': sha256_file(SRC),
             'vendor/marked.min.js': sha256_file(MARKED),

@@ -348,6 +348,125 @@ try {
     && (clipHtml.match(/background-color:/g) || []).length === (wxDirect.match(/background-color:/g) || []).length,
     `clipLen=${clipHtml.length} directLen=${wxDirect.length}`);
   await ctx2.close();
+
+  // --- 12. 行同步高亮（1.2.1）：编辑光标所在行 → 预览对应块描边高亮 ---
+  // 高亮层必须是 #preview 的兄弟节点（不在 #preview 内），复制/导出
+  // 只克隆 #preview，永远带不进公众号 HTML；显示用描边 + “当前行”
+  // 角标，不用色块填充，与引用块/代码块等 md 样式一眼可分。
+  const SYNC_DOC = '# 标题一\n\n第一段正文第一行\n第一段正文第二行\n\n## 小标题\n\n- 列表一\n- 列表二\n\n> 引用内容\n\n```js\nconst x = 1;\n```\n\n| 表头一 | 表头二 |\n| ------ | ------ |\n| 单元格一 | 单元格二 |\n\n最后一段\n';
+  await page.fill('#editor', SYNC_DOC);
+  await sleep(700);
+  const hlInfo = () => page.evaluate(() => {
+    const hl = document.querySelector('#syncHL');
+    const prev = document.querySelector('#preview');
+    return {
+      exists: !!hl,
+      sibling: !!hl && !!hl.parentElement && hl.parentElement.id === 'previewScroll',
+      insidePreview: !!document.querySelector('#preview #syncHL'),
+      tag: !!hl && hl.textContent.includes('当前行'),
+      display: hl ? getComputedStyle(hl).display : 'missing',
+      rect: hl ? hl.getBoundingClientRect().toJSON() : null,
+      prevRect: prev ? prev.getBoundingClientRect().toJSON() : null,
+    };
+  });
+  const elRect = (sel) => page.evaluate((s) => {
+    const el = document.querySelector(s);
+    return el ? el.getBoundingClientRect().toJSON() : null;
+  }, sel);
+  const setCaretLine = (line) => page.evaluate((ln) => {
+    const e = document.querySelector('#editor');
+    const lines = e.value.split('\n');
+    let pos = 0;
+    for (let i = 0; i < ln; i++) pos += lines[i].length + 1;
+    e.focus();
+    e.setSelectionRange(pos, pos);
+    e.dispatchEvent(new Event('keyup'));
+  }, line);
+  const near = (a, b, tol = 3) => Math.abs(a - b) <= tol;
+  const hlCovers = async (sel) => {
+    const info = await hlInfo();
+    const r = await elRect(sel);
+    return { info, r, ok: info.display !== 'none' && !!r
+      && near(info.rect.top, r.top - 6) && near(info.rect.height, r.height + 12) };
+  };
+  let info = await hlInfo();
+  check('行同步（1.2.1）：高亮层存在且为 #previewScroll 子节点、不在 #preview 内', info.exists && info.sibling && !info.insidePreview);
+  check('行同步（1.2.1）：高亮层带“当前行”角标', info.tag);
+  await setCaretLine(0);
+  await sleep(300);
+  info = await hlInfo();
+  let r = await elRect('#preview > h1');
+  check('行同步（1.2.1）：光标在标题行，高亮框对准 h1（宽与预览同宽）', info.display !== 'none' && r
+    && near(info.rect.top, r.top - 6) && near(info.rect.height, r.height + 12)
+    && near(info.rect.left, info.prevRect.left - 6) && near(info.rect.width, info.prevRect.width + 12),
+    `hl=${JSON.stringify(info.rect)} h1=${JSON.stringify(r)}`);
+  await setCaretLine(3);
+  await sleep(300);
+  let cov = await hlCovers('#preview > p');
+  check('行同步（1.2.1）：光标在段落第二行，高亮整段 p', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} p=${JSON.stringify(cov.r)}`);
+  await setCaretLine(7);
+  await sleep(300);
+  cov = await hlCovers('#preview > ul');
+  check('行同步（1.2.1）：光标在列表行，高亮整块 ul', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} ul=${JSON.stringify(cov.r)}`);
+  await setCaretLine(4);
+  await sleep(300);
+  cov = await hlCovers('#preview > h2');
+  check('行同步（1.2.1）：光标在空行，高亮下一块 h2', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} h2=${JSON.stringify(cov.r)}`);
+  await setCaretLine(13);
+  await sleep(300);
+  cov = await hlCovers('#preview > pre');
+  check('行同步（1.2.1）：光标在代码块内，高亮整块 pre', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} pre=${JSON.stringify(cov.r)}`);
+  await setCaretLine(17);
+  await sleep(300);
+  cov = await hlCovers('#preview > table');
+  check('行同步（1.2.1）：光标在表格行，高亮整块 table', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} table=${JSON.stringify(cov.r)}`);
+  // 边缘：纯链接定义段会被 lexer 丢掉，行映射不能因此整篇停用
+  await page.fill('#editor', '[foo]: https://example.com\n\n正文段落\n');
+  await sleep(700);
+  await setCaretLine(2);
+  await sleep(300);
+  cov = await hlCovers('#preview > p');
+  check('行同步（1.2.1）：含链接定义段的文档，映射仍可用', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} p=${JSON.stringify(cov.r)}`);
+  // 边缘：<details> 会被 lexer 拆成开标签/正文/闭标签三个 token，整组只对应 1 个预览元素
+  await page.fill('#editor', '<details>\n<summary>摘要</summary>\n\n详情内容\n</details>\n\n正文\n');
+  await sleep(700);
+  await setCaretLine(3);
+  await sleep(300);
+  cov = await hlCovers('#preview > details');
+  check('行同步（1.2.1）：光标在折叠块内，高亮整个 details', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} details=${JSON.stringify(cov.r)}`);
+  await setCaretLine(6);
+  await sleep(300);
+  cov = await hlCovers('#preview > p');
+  check('行同步（1.2.1）：折叠块后的正文行，高亮对应的 p', cov.ok,
+    `hl=${JSON.stringify(cov.info.rect)} p=${JSON.stringify(cov.r)}`);
+  const wxSync = await page.evaluate(() => window.getWechatHTML().html);
+  const prevHtml = await page.evaluate(() => document.querySelector('#preview').innerHTML);
+  check('行同步（1.2.1）：高亮不进复制 HTML，预览 DOM 内也无高亮层',
+    !wxSync.includes('syncHL') && !wxSync.includes('当前行') && !prevHtml.includes('syncHL'));
+  await page.fill('#editor', SYNC_DOC);
+  await sleep(700);
+  await page.click('#btnDark');
+  await sleep(300);
+  await setCaretLine(0);
+  await sleep(300);
+  const darkBorder = await page.evaluate(() => {
+    const hl = document.querySelector('#syncHL');
+    return { display: getComputedStyle(hl).display, border: getComputedStyle(hl).borderTopColor };
+  });
+  check('行同步（1.2.1）：暗色预览下高亮仍可见，描边保持青色',
+    darkBorder.display !== 'none' && darkBorder.border === 'rgb(34, 211, 238)', JSON.stringify(darkBorder));
+  await page.click('#btnDark');
+  await page.fill('#editor', '');
+  await sleep(700);
+  info = await hlInfo();
+  check('行同步（1.2.1）：空文档不高亮', info.display === 'none');
 } catch (err) {
   fail++;
   failures.push('smoke 流程异常：' + (err && err.message));
